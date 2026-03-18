@@ -674,6 +674,7 @@ async def upload_knowledge(
     # Save to file registry for download
     FILE_REGISTRY[doc_id] = {
         "file_name": file_name,
+        "title": title,
         "file_path": str(stored_path),
         "knowledge_base": knowledge_base,
         "uploaded_at": datetime.utcnow().isoformat(),
@@ -828,36 +829,75 @@ class QueryRequest(BaseModel):
     conversation_id: Optional[str] = None
 
 
-FILE_REQUEST_KEYWORDS = [
-    "gửi file", "gửi cho tôi file", "cho tôi file", "download file",
-    "tải file", "lấy file", "xem file", "file gốc", "file bảng giá",
-    "gửi tài liệu", "cho tôi tài liệu", "tải tài liệu",
-    "gửi bảng giá", "cho bảng giá", "lấy bảng giá",
+FILE_REQUEST_PATTERNS = [
+    # "gửi" variants
+    "gửi file", "gửi cho tôi", "gửi cho anh", "gửi cho em",
+    "gửi anh", "gửi tôi", "gửi em",
+    "gửi tài liệu", "gửi bảng giá",
+    # "cho" variants
+    "cho tôi file", "cho anh file", "cho em file",
+    "cho tôi tài liệu", "cho anh tài liệu",
+    "cho bảng giá", "cho anh bảng giá", "cho tôi bảng giá",
+    # "tải/lấy/xem/download"
+    "tải file", "lấy file", "xem file", "download file",
+    "tải tài liệu", "lấy tài liệu", "tải bảng giá", "lấy bảng giá",
+    # file-centric
+    "file gốc", "file bảng giá",
 ]
+
+# These words confirm it's a file request (not just "gửi anh lời chào")
+FILE_CONFIRM_WORDS = {"file", "tài liệu", "bảng giá", "báo giá", "document", "tải", "download"}
 
 
 def detect_file_request(query: str) -> Optional[str]:
-    """Detect if user is asking for a file download. Returns search term or None."""
+    """Detect if user is asking for a file download."""
     query_lower = query.lower()
-    for kw in FILE_REQUEST_KEYWORDS:
+    for kw in FILE_REQUEST_PATTERNS:
         if kw in query_lower:
-            # Extract what they want: everything after the keyword
-            remaining = query_lower.split(kw)[-1].strip()
-            return remaining if remaining else query_lower
+            # Must also contain a file-related confirm word
+            if any(w in query_lower for w in FILE_CONFIRM_WORDS):
+                return query_lower
     return None
 
 
+SEARCH_ALIASES = {
+    "omicall": ["omi", "omicall", "tổng đài", "contact center", "dịch vụ omi"],
+    "esms": ["esms", "sms", "brandname", "tin nhắn"],
+    "bảng giá": ["bảng giá", "giá", "pricing", "báo giá", "price"],
+    "phúc lợi": ["phúc lợi", "phuc loi", "chính sách", "welfare", "chế độ"],
+    "nội quy": ["nội quy", "noi quy", "quy định", "lao động"],
+}
+
+
 def find_matching_files(search_term: str) -> list:
-    """Find files matching search term in registry."""
+    """Find files matching search term with alias expansion."""
     results = []
     search_lower = search_term.lower()
+
+    # Expand with aliases
+    expanded = set()
+    for word in search_lower.split():
+        if len(word) > 1:
+            expanded.add(word)
+    for key, aliases in SEARCH_ALIASES.items():
+        if any(a in search_lower for a in aliases):
+            expanded.update(aliases)
+            expanded.add(key)
+
+    print(f"[FileSearch] search='{search_term}', expanded={expanded}, registry={len(FILE_REGISTRY)} files")
+
     for doc_id, entry in FILE_REGISTRY.items():
         fname = entry["file_name"].lower()
-        if any(word in fname for word in search_lower.split() if len(word) > 2):
+        title = entry.get("title", "").lower()
+        kb = entry.get("knowledge_base", "").lower()
+        searchable = f"{fname} {title} {kb}"
+        matches = [t for t in expanded if len(t) > 1 and t in searchable]
+        print(f"[FileSearch] '{entry['file_name']}' matches={matches}")
+        if matches:
             results.append({
                 "file_name": entry["file_name"],
                 "knowledge_base": entry.get("knowledge_base", ""),
-                "download_url": f"/api/v1/files/{doc_id}/download",
+                "download_url": f"http://localhost:8000/api/v1/files/{doc_id}/download",
             })
     return results
 
@@ -893,7 +933,7 @@ async def query(req: QueryRequest):
         # If no files found, also list all available files
         if FILE_REGISTRY:
             all_files = "\n".join([
-                f"- 📎 **{e['file_name']}** ({KB_NAME_MAP.get(e.get('knowledge_base',''), e.get('knowledge_base',''))}) - [Tải xuống](/api/v1/files/{did}/download)"
+                f"- 📎 **{e['file_name']}** ({KB_NAME_MAP.get(e.get('knowledge_base',''), e.get('knowledge_base',''))}) - [Tải xuống](http://localhost:8000/api/v1/files/{did}/download)"
                 for did, e in FILE_REGISTRY.items()
             ])
             elapsed = int((time.time() - start) * 1000)
