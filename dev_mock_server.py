@@ -1073,6 +1073,52 @@ async def query(req: QueryRequest):
 
 # --- Health ---
 
+# === Google Sheets Sync endpoints ===
+
+@app.post("/api/v1/sheets/sync")
+async def sheets_sync(req: dict):
+    """Sync a Google Sheet to Dify KB."""
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / "api"))
+        from services.google_sheets_sync import GoogleSheetsSync
+
+        syncer = GoogleSheetsSync(
+            credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+            dify_base_url=DIFY_BASE_URL,
+            dify_dataset_api_key=DIFY_DATASET_API_KEY,
+        )
+        result = await syncer.sync_sheet(
+            spreadsheet_id=req.get("spreadsheet_id", ""),
+            dataset_id=req.get("dataset_id", ""),
+            title=req.get("title", ""),
+            force=req.get("force", False),
+        )
+        return result
+    except FileNotFoundError:
+        raise HTTPException(400, "Google credentials not found. Place google-credentials.json in config/")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/v1/sheets/status")
+async def sheets_status():
+    """Get sync status of all configured sheets."""
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / "api"))
+        from services.google_sheets_sync import GoogleSheetsSync
+
+        syncer = GoogleSheetsSync(
+            credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+            dify_base_url=DIFY_BASE_URL,
+            dify_dataset_api_key=DIFY_DATASET_API_KEY,
+        )
+        return {"sheets": syncer.get_sync_status()}
+    except Exception:
+        return {"sheets": []}
+
+
 @app.get("/health")
 async def health():
     dify_ok = bool(DIFY_API_KEY)
