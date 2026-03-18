@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+postgres_data/
+redis_data/
+upload_data/
+
+# Uploads
+/data/uploads/
+
+# SSL certs (generated)
+config/ssl/*.pem
+config/ssl/*.key
+config/ssl/*.crt
+
+# Logs
+*.log
+logs/
+
+# Test / Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Alembic
+alembic/versions/*.pyc
+
+# Node (admin-panel)
+node_modules/
+admin-panel/dist/
+admin-panel/.next/

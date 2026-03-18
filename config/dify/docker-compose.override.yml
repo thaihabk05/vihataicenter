@@ -1,0 +1,20 @@
+version: '3.8'
+# Dify Docker Compose override for ViHAT deployment
+# Place this in the Dify docker directory alongside the official docker-compose.yml
+
+services:
+  api:
+    environment:
+      - LOG_LEVEL=INFO
+      - CONSOLE_WEB_URL=https://dify.vihat.vn
+      - APP_WEB_URL=https://dify.vihat.vn
+
+  web:
+    environment:
+      - CONSOLE_API_URL=https://dify.vihat.vn
+      - APP_API_URL=https://dify.vihat.vn
+
+networks:
+  default:
+    name: vihat-network
+    external: true

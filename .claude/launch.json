@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "admin-panel",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["next", "dev", "--port", "3001"],
+      "port": 3001,
+      "cwd": "admin-panel",
+      "autoPort": false
+    }
+  ]
+}
