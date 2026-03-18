@@ -544,6 +544,68 @@ def preprocess_docx(file_content: bytes, file_name: str) -> str:
         return None
 
 
+def split_into_sections(markdown_text: str, doc_title: str, max_tokens: int = 1500) -> list[dict]:
+    """Split markdown into semantic sections for better RAG chunking.
+
+    Each section keeps its heading context and stays under max_tokens.
+    Returns list of {name, text} dicts ready for Dify upload.
+    """
+    lines = markdown_text.split("\n")
+    sections = []
+    current_section = []
+    current_heading = doc_title
+
+    # Detect section boundaries: Roman numerals, ##, numbered headings
+    import re
+    section_pattern = re.compile(
+        r'^(#{1,3}\s+|[IVX]+\.\s+|\d+\.\s+[A-ZĐ]|[A-ZĐ]{2,}.*:$)',
+        re.MULTILINE
+    )
+
+    for line in lines:
+        is_heading = bool(section_pattern.match(line.strip()))
+
+        if is_heading and current_section:
+            # Save current section
+            text = "\n".join(current_section).strip()
+            if text and len(text) > 50:  # Skip tiny sections
+                sections.append({
+                    "name": f"{doc_title} — {current_heading}",
+                    "text": f"# {doc_title}\n## {current_heading}\n\n{text}",
+                })
+            current_section = []
+            current_heading = line.strip().lstrip("#").strip()
+
+        current_section.append(line)
+
+    # Don't forget last section
+    if current_section:
+        text = "\n".join(current_section).strip()
+        if text and len(text) > 50:
+            sections.append({
+                "name": f"{doc_title} — {current_heading}",
+                "text": f"# {doc_title}\n## {current_heading}\n\n{text}",
+            })
+
+    # Merge small sections (< 200 chars) with next one
+    merged = []
+    buffer = None
+    for sec in sections:
+        if buffer:
+            if len(buffer["text"]) < 200:
+                buffer["text"] += "\n\n" + sec["text"]
+                buffer["name"] = sec["name"]
+            else:
+                merged.append(buffer)
+                buffer = sec
+        else:
+            buffer = sec
+    if buffer:
+        merged.append(buffer)
+
+    return merged if merged else [{"name": doc_title, "text": markdown_text}]
+
+
 # File storage for original files (for download)
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -637,20 +699,29 @@ async def upload_knowledge(
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             if preprocessed_text:
-                # Upload as text (pre-processed) for better quality
-                resp = await client.post(
-                    f"{DIFY_BASE_URL}/datasets/{ds_id}/document/create_by_text",
-                    headers={
-                        "Authorization": f"Bearer {DIFY_DATASET_API_KEY}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "name": title or file_name,
-                        "text": preprocessed_text,
-                        "indexing_technique": "high_quality",
-                        "process_rule": {"mode": "automatic"},
-                    },
-                )
+                # Split into semantic sections for better RAG quality
+                sections = split_into_sections(preprocessed_text, title or file_name)
+                print(f"[Upload] Split '{title}' into {len(sections)} sections")
+
+                result = None
+                for i, section in enumerate(sections):
+                    resp = await client.post(
+                        f"{DIFY_BASE_URL}/datasets/{ds_id}/document/create_by_text",
+                        headers={
+                            "Authorization": f"Bearer {DIFY_DATASET_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "name": section["name"],
+                            "text": section["text"],
+                            "indexing_technique": "high_quality",
+                            "process_rule": {"mode": "automatic"},
+                        },
+                    )
+                    if resp.status_code != 200:
+                        print(f"[Upload] Section {i+1} error: {resp.status_code}")
+                    elif result is None:
+                        result = resp.json()  # Keep first result for doc_id
             else:
                 # Upload as file (PDF, TXT, MD, etc.)
                 resp = await client.post(
