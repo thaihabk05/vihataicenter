@@ -32,14 +32,17 @@ SYNC_STATE_PATH = Path(__file__).parent.parent.parent / "data" / "drive_sync_sta
 # Supported file types
 GOOGLE_SHEETS_MIME = "application/vnd.google-apps.spreadsheet"
 GOOGLE_DOCS_MIME = "application/vnd.google-apps.document"
+GOOGLE_SLIDES_MIME = "application/vnd.google-apps.presentation"
 SUPPORTED_MIMES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "application/pdf": "pdf",
     "text/plain": "txt",
     "text/markdown": "md",
     GOOGLE_SHEETS_MIME: "gsheet",
     GOOGLE_DOCS_MIME: "gdoc",
+    GOOGLE_SLIDES_MIME: "gslides",
 }
 
 
@@ -104,6 +107,8 @@ class GoogleDriveSync:
                 q=query,
                 fields="files(id, name, mimeType, modifiedTime, size)",
                 pageSize=100,
+                supportsAllDrives=True,
+                includeItemsFromAllDrives=True,
             ).execute()
 
             for f in results.get("files", []):
@@ -134,6 +139,10 @@ class GoogleDriveSync:
             # Export as docx
             content = drive.files().export(fileId=file_id, mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document").execute()
             return "docx", content
+        elif mime_type == GOOGLE_SLIDES_MIME:
+            # Export as pptx
+            content = drive.files().export(fileId=file_id, mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation").execute()
+            return "pptx", content
         else:
             # Download directly
             content = drive.files().get_media(fileId=file_id).execute()
@@ -183,6 +192,8 @@ class GoogleDriveSync:
                     return self._process_docx(tmp_path, title)
                 elif ext == "pdf":
                     return self._process_pdf(tmp_path, title)
+                elif ext == "pptx":
+                    return self._process_pptx(tmp_path, title)
             finally:
                 os.unlink(tmp_path)
         except Exception as e:
@@ -255,6 +266,23 @@ class GoogleDriveSync:
         except ImportError:
             # Fallback: just return filename
             return f"# {title}\n\n(PDF file - install pdfplumber for text extraction)"
+
+    def _process_pptx(self, path: str, title: str) -> str:
+        """Extract text from PowerPoint slides."""
+        try:
+            from pptx import Presentation
+            prs = Presentation(path)
+            parts = [f"# {title}\n"]
+            for i, slide in enumerate(prs.slides):
+                slide_text = []
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        slide_text.append(shape.text.strip())
+                if slide_text:
+                    parts.append(f"## Slide {i + 1}\n" + "\n".join(slide_text))
+            return "\n".join(parts)
+        except ImportError:
+            return f"# {title}\n\n(PPTX file - install python-pptx for text extraction)"
 
     def _split_sections(self, markdown: str, title: str) -> list[dict]:
         """Split markdown into semantic sections for better RAG."""
