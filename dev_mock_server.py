@@ -425,11 +425,12 @@ KB_NAME_REVERSE = {v: k for k, v in KB_NAME_MAP.items()}
 
 @app.get("/api/v1/admin/knowledge/list")
 async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[str] = None):
-    """List documents from Dify Knowledge Bases."""
+    """List parent documents (grouped). Each item = 1 original file with section count."""
     if not DIFY_DATASET_API_KEY:
         return []
 
-    docs = []
+    # Collect all Dify docs with their status
+    all_dify_docs = {}  # doc_id → {status, name, size, ...}
     datasets_to_check = {}
 
     if knowledge_base:
@@ -448,25 +449,59 @@ async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[
                     params={"page": 1, "limit": 100},
                 )
                 resp.raise_for_status()
-                data = resp.json()
-                for doc in data.get("data", []):
-                    file_info = doc.get("data_source_detail_dict", {}).get("upload_file", {})
-                    docs.append({
-                        "id": doc["id"],
-                        "knowledge_base": kb_key,
-                        "title": doc.get("name", ""),
-                        "file_name": file_info.get("name", doc.get("name", "")),
-                        "file_type": file_info.get("extension", "").lstrip(".") or "txt",
-                        "file_size_bytes": file_info.get("size", 0),
-                        "tags": [],
-                        "chunks_count": doc.get("completed_segments", 0) or doc.get("segment_count", 0),
-                        "status": "ready" if doc.get("indexing_status") == "completed" else doc.get("indexing_status", "processing"),
-                        "dify_document_id": doc["id"],
-                        "created_at": datetime.fromtimestamp(doc.get("created_at", 0)).isoformat() if doc.get("created_at") else "",
-                    })
+                for doc in resp.json().get("data", []):
+                    all_dify_docs[doc["id"]] = {
+                        "kb": kb_key,
+                        "status": doc.get("indexing_status", "unknown"),
+                        "name": doc.get("name", ""),
+                        "tokens": doc.get("tokens", 0),
+                    }
             except Exception as e:
                 print(f"Error fetching docs from {kb_key}: {e}")
 
+    # Build parent document list from registry
+    docs = []
+    for parent_id, entry in FILE_REGISTRY.items():
+        kb = entry.get("knowledge_base", "")
+        if knowledge_base and kb != knowledge_base:
+            continue
+
+        section_ids = entry.get("section_doc_ids", [])
+
+        # Determine overall status from sections
+        section_statuses = [all_dify_docs.get(sid, {}).get("status", "unknown") for sid in section_ids]
+        if all(s == "completed" for s in section_statuses) and section_statuses:
+            overall_status = "ready"
+        elif any(s in ("indexing", "splitting", "parsing", "waiting") for s in section_statuses):
+            overall_status = "indexing"
+        elif any(s == "error" for s in section_statuses):
+            overall_status = "error"
+        elif not section_statuses:
+            overall_status = "processing"
+        else:
+            overall_status = "ready"
+
+        file_name = entry.get("file_name", "")
+        ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "txt"
+
+        docs.append({
+            "id": parent_id,
+            "knowledge_base": kb,
+            "title": entry.get("title", file_name),
+            "file_name": file_name,
+            "file_type": ext.upper(),
+            "file_size_bytes": Path(entry.get("file_path", "")).stat().st_size if Path(entry.get("file_path", "")).exists() else 0,
+            "tags": [],
+            "sections_count": len(section_ids),
+            "status": overall_status,
+            "source_type": entry.get("source_type", "upload"),
+            "drive_url": entry.get("drive_url", ""),
+            "created_at": entry.get("uploaded_at", ""),
+            "download_url": f"http://localhost:8000/api/v1/files/{parent_id}/download",
+        })
+
+    # Sort by created_at desc
+    docs.sort(key=lambda d: d.get("created_at", ""), reverse=True)
     return docs
 
 
@@ -610,7 +645,8 @@ def split_into_sections(markdown_text: str, doc_title: str, max_tokens: int = 15
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-# In-memory registry: dify_doc_id → {file_name, file_path, knowledge_base, uploaded_at}
+# Parent document registry:
+# parent_id → {file_name, title, file_path, knowledge_base, uploaded_at, section_doc_ids: [...], drive_url?, source_type}
 FILE_REGISTRY: dict[str, dict] = {}
 
 # Load existing files from disk
@@ -696,14 +732,15 @@ async def upload_knowledge(
         "process_rule": {"mode": "automatic"},
     }
 
+    section_doc_ids = []
+    result = None
+
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             if preprocessed_text:
-                # Split into semantic sections for better RAG quality
                 sections = split_into_sections(preprocessed_text, title or file_name)
                 print(f"[Upload] Split '{title}' into {len(sections)} sections")
 
-                result = None
                 for i, section in enumerate(sections):
                     resp = await client.post(
                         f"{DIFY_BASE_URL}/datasets/{ds_id}/document/create_by_text",
@@ -718,78 +755,109 @@ async def upload_knowledge(
                             "process_rule": {"mode": "automatic"},
                         },
                     )
-                    if resp.status_code != 200:
+                    if resp.status_code == 200:
+                        sec_id = resp.json().get("document", {}).get("id")
+                        if sec_id:
+                            section_doc_ids.append(sec_id)
+                        if result is None:
+                            result = resp.json()
+                    else:
                         print(f"[Upload] Section {i+1} error: {resp.status_code}")
-                    elif result is None:
-                        result = resp.json()  # Keep first result for doc_id
             else:
-                # Upload as file (PDF, TXT, MD, etc.)
                 resp = await client.post(
                     f"{DIFY_BASE_URL}/datasets/{ds_id}/document/create_by_file",
                     headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
                     files={"file": (file_name, file_content, file.content_type or "application/octet-stream")},
                     data={"data": json.dumps(chunk_config)},
                 )
+                if resp.status_code == 200:
+                    result = resp.json()
+                    sec_id = result.get("document", {}).get("id")
+                    if sec_id:
+                        section_doc_ids.append(sec_id)
 
-            if resp.status_code != 200:
-                print(f"Dify upload error: {resp.status_code} {resp.text}")
-                raise HTTPException(resp.status_code, f"Dify: {resp.text[:200]}")
-            result = resp.json()
+            if not result:
+                raise HTTPException(500, "Dify upload failed")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(500, f"Upload error: {e}")
 
-    doc_id = result.get("document", {}).get("id", str(uuid.uuid4()))
+    # Parent document ID = first section ID or UUID
+    parent_id = section_doc_ids[0] if section_doc_ids else str(uuid.uuid4())
 
-    # Save to file registry for download
-    FILE_REGISTRY[doc_id] = {
+    FILE_REGISTRY[parent_id] = {
         "file_name": file_name,
-        "title": title,
+        "title": title or file_name,
         "file_path": str(stored_path),
         "knowledge_base": knowledge_base,
+        "source_type": "upload",
         "uploaded_at": datetime.utcnow().isoformat(),
+        "section_doc_ids": section_doc_ids,
+        "sections_count": len(section_doc_ids),
     }
     save_registry()
 
     return {
         "status": "success",
-        "document_id": doc_id,
-        "chunks_created": result.get("document", {}).get("segments_count"),
+        "document_id": parent_id,
+        "sections_count": len(section_doc_ids),
         "processing_time_ms": 0,
         "preprocessed": preprocessed_text is not None,
-        "download_url": f"/api/v1/files/{doc_id}/download",
+        "download_url": f"http://localhost:8000/api/v1/files/{parent_id}/download",
     }
 
 
 @app.delete("/api/v1/admin/knowledge/{doc_id}")
 async def delete_knowledge(doc_id: str, knowledge_base: Optional[str] = None):
-    """Delete document from Dify. Tries all datasets if knowledge_base not specified."""
+    """Delete parent document and ALL its sections from Dify (cascade delete)."""
     if not DIFY_DATASET_API_KEY:
         raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
 
-    # Build list of datasets to try
+    # Find parent in registry
+    parent = FILE_REGISTRY.get(doc_id)
+    section_ids_to_delete = []
+
+    if parent:
+        section_ids_to_delete = parent.get("section_doc_ids", [doc_id])
+        kb = parent.get("knowledge_base", knowledge_base or "")
+    else:
+        section_ids_to_delete = [doc_id]
+        kb = knowledge_base
+
+    # Build datasets to try
     datasets_to_try = {}
-    if knowledge_base and knowledge_base in DIFY_DATASET_IDS:
-        datasets_to_try[knowledge_base] = DIFY_DATASET_IDS[knowledge_base]
+    if kb and kb in DIFY_DATASET_IDS:
+        datasets_to_try[kb] = DIFY_DATASET_IDS[kb]
     else:
         datasets_to_try = {k: v for k, v in DIFY_DATASET_IDS.items() if v}
 
+    deleted_count = 0
     async with httpx.AsyncClient(timeout=30.0) as client:
-        for kb_key, ds_id in datasets_to_try.items():
-            try:
-                resp = await client.delete(
-                    f"{DIFY_BASE_URL}/datasets/{ds_id}/documents/{doc_id}",
-                    headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
-                )
-                if resp.status_code in (200, 204):
-                    return {"status": "ok", "message": f"Đã xoá tài liệu khỏi {KB_NAME_MAP.get(kb_key, kb_key)}"}
-                resp_data = resp.json() if resp.status_code != 404 else {}
-                if resp.status_code != 404:
-                    print(f"Delete from {kb_key}: status={resp.status_code}, body={resp_data}")
-            except Exception as e:
-                print(f"Delete error in {kb_key}: {e}")
-                continue
+        for sec_id in section_ids_to_delete:
+            for kb_key, ds_id in datasets_to_try.items():
+                try:
+                    resp = await client.delete(
+                        f"{DIFY_BASE_URL}/datasets/{ds_id}/documents/{sec_id}",
+                        headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
+                    )
+                    if resp.status_code in (200, 204):
+                        deleted_count += 1
+                        break
+                except Exception as e:
+                    continue
+
+    # Remove from registry
+    if doc_id in FILE_REGISTRY:
+        del FILE_REGISTRY[doc_id]
+        save_registry()
+
+    if deleted_count > 0 or parent:
+        return {
+            "status": "ok",
+            "message": f"Đã xoá tài liệu và {deleted_count} sections",
+            "deleted_sections": deleted_count,
+        }
 
     raise HTTPException(404, "Không tìm thấy tài liệu trong hệ thống")
 
@@ -1048,8 +1116,19 @@ async def query(req: QueryRequest):
                 headers={"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"},
                 json=payload,
             )
+            # If 404 (conversation expired), retry without conversation_id
+            if resp.status_code == 404 and "conversation_id" in payload:
+                print(f"[Dify] Conversation expired, starting new one")
+                payload.pop("conversation_id")
+                resp = await client.post(
+                    f"{DIFY_BASE_URL}/chat-messages",
+                    headers={"Authorization": f"Bearer {DIFY_API_KEY}", "Content-Type": "application/json"},
+                    json=payload,
+                )
             resp.raise_for_status()
             data = resp.json()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(500, f"Dify error: {e}")
     except Exception as e:
         raise HTTPException(500, f"Dify error: {e}")
 

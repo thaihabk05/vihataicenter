@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Upload, Trash2, FileText } from "lucide-react";
+import { Upload, Trash2, FileText, Download, ExternalLink, Layers } from "lucide-react";
 import { knowledgeApi } from "@/lib/api-client";
 import { DEPARTMENTS, DOC_STATUS, KB_LIST } from "@/lib/constants";
 import type { KnowledgeDocument } from "@/lib/types";
@@ -182,11 +182,11 @@ export default function KnowledgePage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tiêu đề</TableHead>
+                    <TableHead>Tài liệu</TableHead>
                     <TableHead>KB</TableHead>
-                    <TableHead>Loại file</TableHead>
+                    <TableHead>Loại</TableHead>
                     <TableHead>Kích thước</TableHead>
-                    <TableHead>Số chunks</TableHead>
+                    <TableHead>Sections</TableHead>
                     <TableHead>Trạng thái</TableHead>
                     <TableHead>Ngày tạo</TableHead>
                     <TableHead className="text-right">Hành động</TableHead>
@@ -203,12 +203,15 @@ export default function KnowledgePage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredDocs.map((doc) => (
+                    filteredDocs.map((doc: any) => (
                       <TableRow key={doc.id}>
-                        <TableCell className="font-medium max-w-[200px] truncate">
+                        <TableCell className="font-medium max-w-[280px]">
                           <div className="flex items-center gap-2">
                             <FileText className="size-4 shrink-0 text-muted-foreground" />
-                            {doc.title}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm">{doc.title}</p>
+                              <p className="truncate text-xs text-muted-foreground">{doc.file_name}</p>
+                            </div>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -218,13 +221,18 @@ export default function KnowledgePage() {
                             ] ?? doc.knowledge_base}
                           </Badge>
                         </TableCell>
-                        <TableCell className="uppercase text-xs">
-                          {doc.file_type ?? "-"}
+                        <TableCell className="text-xs">
+                          <Badge variant="outline">{doc.file_type ?? "-"}</Badge>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-xs">
                           {formatFileSize(doc.file_size_bytes)}
                         </TableCell>
-                        <TableCell>{doc.chunks_count ?? "-"}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Layers className="size-3 text-muted-foreground" />
+                            <span className="text-xs">{doc.sections_count ?? doc.chunks_count ?? 0}</span>
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <Badge
                             className={
@@ -237,38 +245,53 @@ export default function KnowledgePage() {
                             ] ?? doc.status}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          {format(new Date(doc.created_at), "dd/MM/yyyy", {
-                            locale: vi,
-                          })}
+                        <TableCell className="text-xs text-muted-foreground">
+                          {doc.created_at ? format(new Date(doc.created_at), "dd/MM/yyyy", { locale: vi }) : "-"}
                         </TableCell>
-                        <TableCell className="text-right">
-                          {deleteConfirmId === doc.id ? (
-                            <div className="flex items-center justify-end gap-1">
+                        <TableCell>
+                          <div className="flex items-center justify-end gap-1">
+                            {doc.drive_url && (
+                              <a href={doc.drive_url} target="_blank" rel="noopener noreferrer">
+                                <Button variant="ghost" size="icon-sm" title="Mở trên Google Drive">
+                                  <ExternalLink className="size-4 text-blue-500" />
+                                </Button>
+                              </a>
+                            )}
+                            {doc.download_url && (
+                              <a href={doc.download_url} target="_blank" rel="noopener noreferrer">
+                                <Button variant="ghost" size="icon-sm" title="Tải xuống">
+                                  <Download className="size-4" />
+                                </Button>
+                              </a>
+                            )}
+                            {deleteConfirmId === doc.id ? (
+                              <>
+                                <Button
+                                  variant="destructive"
+                                  size="xs"
+                                  onClick={() => handleDelete(doc.id)}
+                                >
+                                  Xác nhận
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="xs"
+                                  onClick={() => setDeleteConfirmId(null)}
+                                >
+                                  Hủy
+                                </Button>
+                              </>
+                            ) : (
                               <Button
-                                variant="destructive"
-                                size="xs"
-                                onClick={() => handleDelete(doc.id)}
+                                variant="ghost"
+                                size="icon-sm"
+                                onClick={() => setDeleteConfirmId(doc.id)}
+                                title="Xoá tài liệu"
                               >
-                                Xác nhận
+                                <Trash2 className="size-4 text-destructive" />
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="xs"
-                                onClick={() => setDeleteConfirmId(null)}
-                              >
-                                Hủy
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="icon-sm"
-                              onClick={() => setDeleteConfirmId(doc.id)}
-                            >
-                              <Trash2 className="size-4 text-destructive" />
-                            </Button>
-                          )}
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))
