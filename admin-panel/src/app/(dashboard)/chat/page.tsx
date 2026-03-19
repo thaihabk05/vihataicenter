@@ -1,31 +1,125 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { MessageSquarePlus, RefreshCw, Trash2, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import { useAuth } from "@/hooks/use-auth";
-import { queryApi } from "@/lib/api-client";
-import type { ChatMessage, QueryResponse } from "@/lib/types";
+import { queryApi, chatApi } from "@/lib/api-client";
+import type { ChatMessage, QueryResponse, Conversation } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function ChatPage() {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(false);
 
-  const handleNewConversation = useCallback(() => {
-    setMessages([]);
-    setConversationId(null);
+  // Load conversation list
+  const loadConversations = useCallback(async () => {
+    try {
+      setLoadingConversations(true);
+      const res = await chatApi.listConversations();
+      setConversations(res.data);
+    } catch {
+      // Silently fail - conversations might not be available
+    } finally {
+      setLoadingConversations(false);
+    }
   }, []);
+
+  // Load messages for a conversation
+  const loadMessages = useCallback(async (convId: string) => {
+    try {
+      const res = await chatApi.getMessages(convId);
+      const msgs: ChatMessage[] = (res.data || []).map((m: any) => ({
+        role: m.role,
+        content: m.content,
+        sources: m.sources,
+        timestamp: new Date(m.timestamp),
+      }));
+      setMessages(msgs);
+      setConversationId(convId);
+    } catch {
+      toast.error("Không thể tải tin nhắn");
+    }
+  }, []);
+
+  // On mount, load conversations and select the most recent
+  useEffect(() => {
+    loadConversations().then(() => {});
+  }, [loadConversations]);
+
+  // After conversations load, select the most recent one if none selected
+  useEffect(() => {
+    if (conversations.length > 0 && !conversationId && !loading) {
+      loadMessages(conversations[0].id);
+    }
+  }, [conversations, conversationId, loading, loadMessages]);
+
+  const handleNewConversation = useCallback(async () => {
+    try {
+      const res = await chatApi.createConversation();
+      const newConv = res.data;
+      setConversationId(newConv.id);
+      setMessages([]);
+      // Reload conversation list
+      await loadConversations();
+    } catch {
+      // Fallback: just reset locally
+      setMessages([]);
+      setConversationId(null);
+    }
+  }, [loadConversations]);
+
+  const handleSelectConversation = useCallback(
+    (convId: string) => {
+      if (convId === conversationId) return;
+      loadMessages(convId);
+    },
+    [conversationId, loadMessages]
+  );
+
+  const handleDeleteConversation = useCallback(
+    async (convId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      try {
+        await chatApi.deleteConversation(convId);
+        if (convId === conversationId) {
+          setMessages([]);
+          setConversationId(null);
+        }
+        await loadConversations();
+      } catch {
+        toast.error("Không thể xoá cuộc hội thoại");
+      }
+    },
+    [conversationId, loadConversations]
+  );
 
   const handleSend = useCallback(
     async (query: string, department?: string) => {
       if (!user) {
         toast.error("Vui lòng đăng nhập để sử dụng chat.");
         return;
+      }
+
+      // Ensure we have a conversation
+      let activeConvId = conversationId;
+      if (!activeConvId) {
+        try {
+          const res = await chatApi.createConversation();
+          activeConvId = res.data.id;
+          setConversationId(activeConvId);
+        } catch {
+          toast.error("Không thể tạo cuộc hội thoại");
+          return;
+        }
       }
 
       const userMessage: ChatMessage = {
@@ -36,6 +130,13 @@ export default function ChatPage() {
 
       setMessages((prev) => [...prev, userMessage]);
       setLoading(true);
+
+      // Save user message to backend
+      try {
+        await chatApi.saveMessage(activeConvId!, { role: "user", content: query });
+      } catch {
+        // Non-critical, continue
+      }
 
       try {
         const payload: {
@@ -54,8 +155,8 @@ export default function ChatPage() {
           payload.department = department;
         }
 
-        if (conversationId) {
-          payload.conversation_id = conversationId;
+        if (activeConvId) {
+          payload.conversation_id = activeConvId;
         }
 
         const res = await queryApi.send(payload);
@@ -73,6 +174,19 @@ export default function ChatPage() {
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
+
+        // Save assistant message to backend
+        try {
+          await chatApi.saveMessage(activeConvId!, {
+            role: "assistant",
+            content: data.answer,
+            sources: data.sources,
+          });
+          // Refresh conversation list to update title/count
+          await loadConversations();
+        } catch {
+          // Non-critical
+        }
       } catch (err: any) {
         const errorMsg =
           err?.response?.data?.detail || "Không thể kết nối đến hệ thống. Vui lòng thử lại.";
@@ -90,39 +204,120 @@ export default function ChatPage() {
         setLoading(false);
       }
     },
-    [user, conversationId]
+    [user, conversationId, loadConversations]
   );
 
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Hôm nay";
+    if (diffDays === 1) return "Hôm qua";
+    if (diffDays < 7) return `${diffDays} ngày trước`;
+    return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+  };
+
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
-        <div>
-          <h1 className="text-lg font-semibold text-foreground">Trò chuyện</h1>
-          <p className="text-xs text-muted-foreground">
-            Hỏi đáp với hệ thống tri thức ViHAT
-          </p>
+    <div className="flex h-full">
+      {/* Conversation sidebar */}
+      <div className="flex w-[250px] shrink-0 flex-col border-r border-border/50 bg-muted/30">
+        <div className="flex items-center justify-between border-b border-border/50 px-3 py-3">
+          <span className="text-sm font-medium text-foreground">Lịch sử</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleNewConversation}
+            className="h-7 w-7 p-0"
+            title="Cuộc hội thoại mới"
+          >
+            <MessageSquarePlus className="size-4" />
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleNewConversation}
-          disabled={messages.length === 0}
-        >
-          <RefreshCw className="size-3.5" data-icon="inline-start" />
-          Cuộc hội thoại mới
-        </Button>
+        <ScrollArea className="flex-1">
+          {loadingConversations && conversations.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+              Đang tải...
+            </div>
+          ) : conversations.length === 0 ? (
+            <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+              Chưa có cuộc hội thoại nào
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5 p-1.5">
+              {conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  onClick={() => handleSelectConversation(conv.id)}
+                  className={cn(
+                    "group relative flex w-full flex-col items-start gap-0.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent",
+                    conv.id === conversationId && "bg-accent"
+                  )}
+                >
+                  <div className="flex w-full items-center gap-2">
+                    <MessageSquare className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 truncate text-sm">
+                      {conv.title.length > 30
+                        ? conv.title.slice(0, 30) + "..."
+                        : conv.title}
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => handleDeleteConversation(conv.id, e)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          handleDeleteConversation(conv.id, e as any);
+                        }
+                      }}
+                      className="hidden shrink-0 rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive group-hover:inline-flex"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </span>
+                  </div>
+                  <span className="pl-5.5 text-[11px] text-muted-foreground">
+                    {formatDate(conv.created_at)}
+                    {conv.message_count > 0 && ` · ${conv.message_count} tin nhắn`}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
       </div>
 
-      {/* Messages area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden">
-          <ChatMessages messages={messages} loading={loading} />
+      {/* Main chat area */}
+      <div className="flex flex-1 flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
+          <div>
+            <h1 className="text-lg font-semibold text-foreground">Trò chuyện</h1>
+            <p className="text-xs text-muted-foreground">
+              Hỏi đáp với hệ thống tri thức ViHAT
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleNewConversation}
+            disabled={messages.length === 0}
+          >
+            <RefreshCw className="size-3.5" data-icon="inline-start" />
+            Cuộc hội thoại mới
+          </Button>
         </div>
-      </div>
 
-      {/* Input area */}
-      <ChatInput onSend={handleSend} loading={loading} />
+        {/* Messages area */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden">
+            <ChatMessages messages={messages} loading={loading} conversationId={conversationId} />
+          </div>
+        </div>
+
+        {/* Input area */}
+        <ChatInput onSend={handleSend} loading={loading} />
+      </div>
     </div>
   );
 }

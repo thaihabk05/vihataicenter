@@ -86,3 +86,23 @@ export interface ChatMessage {
   sources?: Source[];
   timestamp: Date;
 }
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  message_count: number;
+}
+
+export interface Feedback {
+  id: string;
+  query_text: string;
+  answer_text: string;
+  sources: any[];
+  category: 'wrong_answer' | 'no_answer' | 'outdated';
+  user_comment: string;
+  conversation_id: string | null;
+  status: 'new' | 'reviewing' | 'resolved';
+  admin_note: string;
+  created_at: string;
+}

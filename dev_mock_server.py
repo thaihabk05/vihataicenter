@@ -1229,6 +1229,390 @@ async def sheets_status():
         return {"sheets": []}
 
 
+# ---- Conversation Persistence ----
+CONVERSATIONS_FILE = Path(__file__).parent / "data" / "conversations.json"
+
+
+def _load_conversations() -> dict:
+    if CONVERSATIONS_FILE.exists():
+        try:
+            return json.loads(CONVERSATIONS_FILE.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_conversations(data: dict):
+    CONVERSATIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    CONVERSATIONS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+
+
+class SaveMessageRequest(BaseModel):
+    role: str
+    content: str
+    sources: Optional[list] = None
+
+
+@app.get("/api/v1/chat/conversations")
+async def list_conversations():
+    """List all conversations, newest first."""
+    convs = _load_conversations()
+    result = []
+    for conv in convs.values():
+        result.append({
+            "id": conv["id"],
+            "title": conv.get("title", "Cuộc hội thoại mới"),
+            "created_at": conv["created_at"],
+            "message_count": len(conv.get("messages", [])),
+        })
+    result.sort(key=lambda c: c["created_at"], reverse=True)
+    return result
+
+
+@app.get("/api/v1/chat/conversations/{conv_id}/messages")
+async def get_conversation_messages(conv_id: str):
+    """Get all messages for a conversation."""
+    convs = _load_conversations()
+    if conv_id not in convs:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return convs[conv_id].get("messages", [])
+
+
+@app.post("/api/v1/chat/conversations")
+async def create_conversation():
+    """Create a new empty conversation."""
+    convs = _load_conversations()
+    new_id = str(uuid.uuid4())
+    conv = {
+        "id": new_id,
+        "title": "Cuộc hội thoại mới",
+        "created_at": datetime.utcnow().isoformat(),
+        "messages": [],
+    }
+    convs[new_id] = conv
+    _save_conversations(convs)
+    return {"id": new_id, "title": conv["title"], "created_at": conv["created_at"]}
+
+
+@app.post("/api/v1/chat/conversations/{conv_id}/messages")
+async def save_message(conv_id: str, msg: SaveMessageRequest):
+    """Append a message to a conversation."""
+    convs = _load_conversations()
+    if conv_id not in convs:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    message = {
+        "role": msg.role,
+        "content": msg.content,
+        "sources": msg.sources,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+    convs[conv_id]["messages"].append(message)
+
+    # Update title from first user message
+    if msg.role == "user" and convs[conv_id]["title"] == "Cuộc hội thoại mới":
+        convs[conv_id]["title"] = msg.content[:50] + ("..." if len(msg.content) > 50 else "")
+
+    _save_conversations(convs)
+    return message
+
+
+@app.delete("/api/v1/chat/conversations/{conv_id}")
+async def delete_conversation(conv_id: str):
+    """Delete a conversation."""
+    convs = _load_conversations()
+    if conv_id not in convs:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    del convs[conv_id]
+    _save_conversations(convs)
+    return {"status": "deleted"}
+
+
+# ---- Feedback ----
+
+FEEDBACK_FILE = Path(__file__).parent / "data" / "feedback.json"
+
+def _load_feedback() -> dict:
+    if FEEDBACK_FILE.exists():
+        return json.loads(FEEDBACK_FILE.read_text(encoding="utf-8"))
+    return {}
+
+def _save_feedback(data: dict):
+    FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    FEEDBACK_FILE.write_text(json.dumps(data, ensure_ascii=False, default=str, indent=2), encoding="utf-8")
+
+class FeedbackSubmit(BaseModel):
+    query_text: str
+    answer_text: str
+    sources: list = []
+    category: str  # "wrong_answer" | "no_answer" | "outdated"
+    user_comment: str
+    conversation_id: Optional[str] = None
+
+class FeedbackStatusUpdate(BaseModel):
+    status: str  # "reviewing" | "resolved"
+    admin_note: str = ""
+
+@app.post("/api/v1/feedback")
+async def submit_feedback(body: FeedbackSubmit):
+    """Submit feedback on a chat response."""
+    feedback_id = str(uuid.uuid4())
+    feedback = {
+        "id": feedback_id,
+        "query_text": body.query_text,
+        "answer_text": body.answer_text,
+        "sources": body.sources,
+        "category": body.category,
+        "user_comment": body.user_comment,
+        "conversation_id": body.conversation_id,
+        "status": "new",
+        "admin_note": "",
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    data = _load_feedback()
+    data[feedback_id] = feedback
+    _save_feedback(data)
+    return {"id": feedback_id, "status": "new"}
+
+@app.get("/api/v1/admin/feedback")
+async def list_feedback(status: Optional[str] = None, page: int = 1, limit: int = 20):
+    """List all feedback (admin)."""
+    data = _load_feedback()
+    items = list(data.values())
+
+    # Filter by status
+    if status:
+        items = [f for f in items if f["status"] == status]
+
+    # Sort by created_at descending
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+    total = len(items)
+    pages = max(1, (total + limit - 1) // limit)
+    start = (page - 1) * limit
+    end = start + limit
+
+    return {
+        "items": items[start:end],
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+    }
+
+@app.put("/api/v1/admin/feedback/{feedback_id}/status")
+async def update_feedback_status(feedback_id: str, body: FeedbackStatusUpdate):
+    """Update feedback status."""
+    data = _load_feedback()
+    if feedback_id not in data:
+        raise HTTPException(status_code=404, detail="Feedback not found")
+
+    data[feedback_id]["status"] = body.status
+    data[feedback_id]["admin_note"] = body.admin_note
+    _save_feedback(data)
+    return data[feedback_id]
+
+
+# --- Google Drive / Sheet Import Endpoints ---
+
+class ImportDriveRequest(BaseModel):
+    folder_url: str
+    knowledge_base: str
+    note: str = ""
+
+class ImportLinkRequest(BaseModel):
+    url: str
+    knowledge_base: str
+    title: str = ""
+    note: str = ""
+
+
+@app.post("/api/v1/admin/knowledge/import-drive")
+async def import_drive(req: ImportDriveRequest):
+    """Import files from a Google Drive folder into a Dify knowledge base."""
+    # Extract folder_id from URL
+    m = re.search(r"/folders/([a-zA-Z0-9_-]+)", req.folder_url)
+    if not m:
+        raise HTTPException(400, "Invalid Google Drive folder URL. Expected a URL containing /folders/<id>")
+    folder_id = m.group(1)
+
+    # Resolve dataset
+    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
+    if not dataset_id:
+        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'. Valid: {list(DIFY_DATASET_IDS.keys())}")
+
+    if not DIFY_DATASET_API_KEY:
+        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
+
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / "api"))
+        from services.google_drive_sync import GoogleDriveSync
+
+        syncer = GoogleDriveSync(
+            credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+            dify_base_url=DIFY_BASE_URL,
+            dify_dataset_api_key=DIFY_DATASET_API_KEY,
+        )
+
+        # List files first
+        files = syncer.list_folder(folder_id)
+        files_found = len(files)
+
+        # Sync folder
+        result = await syncer.sync_folder(folder_id, dataset_id)
+
+        return {
+            "status": "success",
+            "files_found": files_found,
+            "synced": result.get("synced", 0),
+            "errors": result.get("errors", 0),
+            "details": result.get("details", []),
+        }
+    except FileNotFoundError:
+        raise HTTPException(400, "Google credentials not found. Place google-credentials.json in config/")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Drive import failed: {e}")
+
+
+@app.post("/api/v1/admin/knowledge/import-link")
+async def import_link(req: ImportLinkRequest):
+    """Import a single Google Sheet or Google Doc into a Dify knowledge base."""
+    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
+    if not dataset_id:
+        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'. Valid: {list(DIFY_DATASET_IDS.keys())}")
+
+    if not DIFY_DATASET_API_KEY:
+        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
+
+    is_sheet = "/spreadsheets/d/" in req.url
+    is_doc = "/document/d/" in req.url
+
+    if not is_sheet and not is_doc:
+        raise HTTPException(400, "URL must be a Google Sheet (/spreadsheets/d/...) or Google Doc (/document/d/...)")
+
+    # Extract document ID from URL
+    id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", req.url)
+    if not id_match:
+        raise HTTPException(400, "Could not extract document ID from URL")
+    doc_id = id_match.group(1)
+
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / "api"))
+
+        if is_sheet:
+            from services.google_sheets_sync import GoogleSheetsSync
+
+            syncer = GoogleSheetsSync(
+                credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+                dify_base_url=DIFY_BASE_URL,
+                dify_dataset_api_key=DIFY_DATASET_API_KEY,
+            )
+            result = await syncer.sync_sheet(
+                spreadsheet_id=doc_id,
+                dataset_id=dataset_id,
+                title=req.title,
+                force=True,
+            )
+            return {
+                "status": "success" if result.get("synced") else "no_changes",
+                "title": req.title or doc_id,
+                "sections_count": result.get("sections", 0),
+            }
+        else:
+            # Google Doc — use GoogleDriveSync to download and upload
+            from services.google_drive_sync import GoogleDriveSync
+
+            syncer = GoogleDriveSync(
+                credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+                dify_base_url=DIFY_BASE_URL,
+                dify_dataset_api_key=DIFY_DATASET_API_KEY,
+            )
+
+            # Download the doc
+            ext, content = syncer._download_file(doc_id, "application/vnd.google-apps.document")
+            title = req.title or doc_id
+            markdown = syncer._preprocess_file(ext, content, title)
+            if not markdown:
+                raise HTTPException(500, "Failed to process Google Doc content")
+
+            # Split into sections and upload
+            sections = syncer._split_sections(markdown, title)
+            uploaded = 0
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                for section in sections:
+                    resp = await client.post(
+                        f"{DIFY_BASE_URL}/datasets/{dataset_id}/document/create_by_text",
+                        headers={
+                            "Authorization": f"Bearer {DIFY_DATASET_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "name": section["name"],
+                            "text": section["text"],
+                            "indexing_technique": "high_quality",
+                            "process_rule": {"mode": "automatic"},
+                        },
+                    )
+                    if resp.status_code == 200:
+                        uploaded += 1
+
+            return {
+                "status": "success",
+                "title": title,
+                "sections_count": uploaded,
+            }
+
+    except FileNotFoundError:
+        raise HTTPException(400, "Google credentials not found. Place google-credentials.json in config/")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Link import failed: {e}")
+
+
+@app.get("/api/v1/admin/knowledge/drive-status")
+async def drive_status():
+    """Get sync status of all imported Drive sources (folders and sheets)."""
+    result = {"folders": [], "sheets": []}
+
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).parent / "api"))
+
+        # Drive folders status
+        try:
+            from services.google_drive_sync import GoogleDriveSync
+            drive_syncer = GoogleDriveSync(
+                credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+                dify_base_url=DIFY_BASE_URL,
+                dify_dataset_api_key=DIFY_DATASET_API_KEY,
+            )
+            result["folders"] = drive_syncer.get_sync_status()
+        except Exception:
+            pass
+
+        # Sheets status
+        try:
+            from services.google_sheets_sync import GoogleSheetsSync
+            sheets_syncer = GoogleSheetsSync(
+                credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+                dify_base_url=DIFY_BASE_URL,
+                dify_dataset_api_key=DIFY_DATASET_API_KEY,
+            )
+            result["sheets"] = sheets_syncer.get_sync_status()
+        except Exception:
+            pass
+
+    except Exception:
+        pass
+
+    return result
+
+
 @app.get("/health")
 async def health():
     dify_ok = bool(DIFY_API_KEY)

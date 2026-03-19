@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   MessageSquare,
+  MessageSquareWarning,
   Users,
   BookOpen,
   FileText,
@@ -15,7 +17,9 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { canManageUsers, canViewAllStats } from "@/lib/permissions";
+import { feedbackApi } from "@/lib/api-client";
 import type { User } from "@/lib/types";
 
 interface NavItem {
@@ -23,6 +27,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   visible: boolean;
+  badge?: number;
 }
 
 interface SidebarProps {
@@ -33,8 +38,25 @@ interface SidebarProps {
 
 export function Sidebar({ user, onLogout, onNavigate }: SidebarProps) {
   const pathname = usePathname();
+  const [newFeedbackCount, setNewFeedbackCount] = useState(0);
 
   const isAdmin = canViewAllStats(user.role);
+
+  // Fetch new feedback count for admins
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const fetchCount = () => {
+      feedbackApi
+        .list({ status: "new", limit: 1 })
+        .then((res) => setNewFeedbackCount(res.data.total ?? 0))
+        .catch(() => {});
+    };
+
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000); // refresh every 30s
+    return () => clearInterval(interval);
+  }, [isAdmin]);
 
   const navItems: NavItem[] = [
     {
@@ -66,6 +88,13 @@ export function Sidebar({ user, onLogout, onNavigate }: SidebarProps) {
       href: "/logs",
       icon: FileText,
       visible: isAdmin,
+    },
+    {
+      label: "Góp ý nội dung",
+      href: "/feedback",
+      icon: MessageSquareWarning,
+      visible: isAdmin,
+      badge: newFeedbackCount,
     },
   ];
 
@@ -120,7 +149,15 @@ export function Sidebar({ user, onLogout, onNavigate }: SidebarProps) {
               )}
             >
               <Icon className="size-4 shrink-0" />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.badge != null && item.badge > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="h-5 min-w-[20px] px-1.5 text-[10px] font-semibold"
+                >
+                  {item.badge}
+                </Badge>
+              )}
             </Link>
           );
         })}

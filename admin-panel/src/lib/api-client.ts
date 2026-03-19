@@ -75,3 +75,20 @@ export const logsApi = {
   list: (params: { page?: number; limit?: number; channel?: string; department?: string; date_from?: string; date_to?: string }) =>
     apiClient.get('/admin/logs', { params }),
 };
+
+// Chat Conversations
+export const chatApi = {
+  listConversations: () => apiClient.get('/chat/conversations'),
+  getMessages: (convId: string) => apiClient.get(`/chat/conversations/${convId}/messages`),
+  createConversation: () => apiClient.post('/chat/conversations'),
+  saveMessage: (convId: string, data: { role: string; content: string; sources?: any[] }) =>
+    apiClient.post(`/chat/conversations/${convId}/messages`, data),
+  deleteConversation: (convId: string) => apiClient.delete(`/chat/conversations/${convId}`),
+};
+
+// Feedback
+export const feedbackApi = {
+  submit: (data: any) => apiClient.post('/feedback', data),
+  list: (params?: any) => apiClient.get('/admin/feedback', { params }),
+  updateStatus: (id: string, data: any) => apiClient.put(`/admin/feedback/${id}/status`, data),
+};
