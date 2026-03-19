@@ -65,6 +65,7 @@ export const knowledgeApi = {
   upload: (formData: FormData) =>
     apiClient.post('/admin/knowledge/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 300000, // 5 minutes for large files
     }),
   delete: (docId: string) => apiClient.delete(`/admin/knowledge/${docId}`),
 };

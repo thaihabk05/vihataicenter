@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -114,8 +115,10 @@ export default function KnowledgePage() {
       setUploadOpen(false);
       resetUploadForm();
       fetchDocs();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      const detail = err?.response?.data?.detail || err?.message || "Upload thất bại";
+      toast.error(`Lỗi upload: ${detail}`);
     } finally {
       setUploading(false);
     }

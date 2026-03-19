@@ -702,11 +702,14 @@ async def upload_knowledge(
     file: UploadFile = File(...),
     knowledge_base: str = Form("general"),
     title: str = Form(""),
+    tags: str = Form(""),
     auto_chunk: bool = Form(True),
     chunk_size: int = Form(800),
     chunk_overlap: int = Form(100),
 ):
     """Upload document to Dify with auto pre-processing for Excel/DOCX."""
+    import traceback as tb
+    print(f"[Upload] Received: kb={knowledge_base}, title={title}, file={file.filename}, size={file.size}")
     ds_id = DIFY_DATASET_IDS.get(knowledge_base, "")
     if not ds_id or not DIFY_DATASET_API_KEY:
         raise HTTPException(400, f"Dataset ID not configured for '{knowledge_base}'")
@@ -720,12 +723,32 @@ async def upload_knowledge(
     stored_path.write_bytes(file_content)
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
 
-    # Auto pre-process Excel and DOCX for better RAG quality
+    # Auto pre-process for better RAG quality
     preprocessed_text = None
     if ext in ("xlsx", "xls"):
         preprocessed_text = preprocess_excel(file_content, file_name)
     elif ext in ("docx", "doc"):
         preprocessed_text = preprocess_docx(file_content, file_name)
+    elif ext == "pdf":
+        try:
+            import pdfplumber, tempfile
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                tmp.write(file_content)
+                tmp_path = tmp.name
+            parts = [f"# {title or file_name}\n"]
+            with pdfplumber.open(tmp_path) as pdf:
+                for i, page in enumerate(pdf.pages):
+                    text = page.extract_text()
+                    if text and len(text.strip()) > 20:
+                        parts.append(f"## Trang {i+1}\n{text}")
+            import os; os.unlink(tmp_path)
+            if len(parts) > 1:
+                preprocessed_text = "\n\n".join(parts)
+                print(f"[Upload] PDF extracted {len(parts)-1} pages text")
+            else:
+                print(f"[Upload] PDF is image-based, uploading raw to Dify")
+        except Exception as e:
+            print(f"[Upload] PDF preprocess failed: {e}, uploading raw")
 
     chunk_config = {
         "indexing_technique": "high_quality",
@@ -736,7 +759,7 @@ async def upload_knowledge(
     result = None
 
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             if preprocessed_text:
                 sections = split_into_sections(preprocessed_text, title or file_name)
                 print(f"[Upload] Split '{title}' into {len(sections)} sections")
@@ -781,6 +804,8 @@ async def upload_knowledge(
     except HTTPException:
         raise
     except Exception as e:
+        print(f"[Upload] ERROR: {e}")
+        tb.print_exc()
         raise HTTPException(500, f"Upload error: {e}")
 
     # Parent document ID = first section ID or UUID
