@@ -5,7 +5,7 @@ nixPkgs = ["nodejs_20"]
 cmds = ["npm ci"]
 
 [phases.build]
-cmds = ["npm run build"]
+cmds = ["npm run build", "cp -r public .next/standalone/public || true", "cp -r .next/static .next/standalone/.next/static || true"]
 
 [start]
-cmd = "PORT=8080 HOSTNAME=0.0.0.0 node .next/standalone/server.js"
+cmd = "cd .next/standalone && PORT=8080 HOSTNAME=0.0.0.0 node server.js"
