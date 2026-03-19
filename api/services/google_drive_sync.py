@@ -136,9 +136,16 @@ class GoogleDriveSync:
             content = drive.files().export(fileId=file_id, mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet").execute()
             return "xlsx", content
         elif mime_type == GOOGLE_DOCS_MIME:
-            # Export as docx
-            content = drive.files().export(fileId=file_id, mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document").execute()
-            return "docx", content
+            # Try docx first, fallback to plain text for large files
+            try:
+                content = drive.files().export(fileId=file_id, mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document").execute()
+                return "docx", content
+            except Exception:
+                # Fallback: export as plain text (no size limit)
+                content = drive.files().export(fileId=file_id, mimeType="text/plain").execute()
+                if isinstance(content, str):
+                    content = content.encode("utf-8")
+                return "txt", content
         elif mime_type == GOOGLE_SLIDES_MIME:
             # Export as pptx
             content = drive.files().export(fileId=file_id, mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation").execute()

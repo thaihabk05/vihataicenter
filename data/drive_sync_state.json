@@ -1,7 +1,109 @@
 {
   "folder:16lrimaP9Gnq4-wHOKOpkSEUO3zRbjnRT:5741495a-709e-45d6-a1c7-0c46ec835d15": {
-    "files": {},
-    "last_sync": "2026-03-19T04:12:54.785909+00:00",
+    "files": {
+      "1qPYWgCfjRFTSq43xul37SsKQjLLBcKPS": {
+        "hash": "1e81a392a2f70e29",
+        "name": "Bản sao của GIẢI PHÁP THIỆP TẾT TỰ ĐỘNG.pptx",
+        "doc_ids": [
+          "5694a20b-40ab-4964-b77e-804fa4c810ef"
+        ],
+        "sections": 1,
+        "synced_at": "2026-03-19T05:03:45.483100+00:00"
+      },
+      "1y44IRBJL5ENs7SSiiiNNLKN5sGDuGDGFlacp-zzcnBY": {
+        "hash": "d838eeb5aab89e4d",
+        "name": "Bản sao của MiniApp - Tài liệu tham khảo (VIHATGROUP)",
+        "doc_ids": [
+          "f72f514d-46d5-4006-b750-01a11d2b73da",
+          "c34ddeaf-a0e1-4112-aeed-70d2cf61956d",
+          "b96ff30a-9c9e-49ef-9787-516a3b163961",
+          "91f82c66-387b-4e46-9c5d-1d4a52ae5792",
+          "2d423650-f498-4e63-9540-3d86c2b136f8",
+          "e533fe71-bb7d-4db2-9f9f-539760a4f407"
+        ],
+        "sections": 6,
+        "synced_at": "2026-03-19T05:03:50.106316+00:00"
+      },
+      "14fXkILNxw9KvmZakNFTChg9ylK3zcBX9YwtuYS7q75Y": {
+        "hash": "f676fd430b9a08c7",
+        "name": "Bản sao của Quy định hồ sơ xác thực OA",
+        "doc_ids": [
+          "912f5dc0-2fe8-4a05-a35a-5f90ca98e2b5",
+          "88d640b6-678a-4aaa-a490-5dd37c53da6b",
+          "f0b4f41c-cec1-4f0e-84bd-d09e470e90f6",
+          "ae9e66c2-ee3c-4d06-944f-3a42e0cd39d1",
+          "562fa26a-ef3f-42bf-b4d3-5eea4ca08d79",
+          "fdbda3c3-5e21-4ef6-9ccb-af71b10f1c05",
+          "57353fe5-939c-4306-8d47-ebece978a2df",
+          "fec6bbb8-3ba0-4ec6-9fdc-a9450fe372dc",
+          "70480c3a-82e1-45e0-a853-7f44f1e53384",
+          "f2263b8d-2cb5-49da-bca3-3f275db7575a",
+          "da36522d-a8a8-4d22-a9bc-0ef9f3388d30",
+          "95765b95-ac3f-4261-8d60-db59121ce4e1",
+          "f2263b8d-2cb5-49da-bca3-3f275db7575a",
+          "c5d35426-d9cc-45e8-b005-2fcf0afc3de0",
+          "46e9dd97-9e7a-46f9-bae9-0dbdd7768749",
+          "05b74c72-f43f-4d0e-9449-207e87f7772b",
+          "f2263b8d-2cb5-49da-bca3-3f275db7575a",
+          "4740dc6e-4ad0-42e1-bf2a-c5f384f6a7dd",
+          "5c7610fe-7378-4d9c-97a5-d414d0efb9c1",
+          "d3879c37-7e8a-4408-8ec7-73d828049eb9",
+          "f2263b8d-2cb5-49da-bca3-3f275db7575a",
+          "4740dc6e-4ad0-42e1-bf2a-c5f384f6a7dd",
+          "b7afa675-8e4b-45a2-bca6-df0127386146",
+          "d3879c37-7e8a-4408-8ec7-73d828049eb9",
+          "f2263b8d-2cb5-49da-bca3-3f275db7575a",
+          "8eef1448-1b19-4acb-a6f8-b2e97e9f940a",
+          "178e5b83-97de-4870-baed-0dd5c8acb3b1",
+          "5ba8d990-f6ad-4e47-9f76-333fdc30a44a",
+          "77f40abe-0a23-470b-a488-1e16a3069637",
+          "82fc4083-e257-4bc5-a7c7-4f2f6e705168",
+          "6cddf35d-1602-4053-bc47-09e1f33cd005"
+        ],
+        "sections": 31,
+        "synced_at": "2026-03-19T05:03:58.564866+00:00"
+      },
+      "16WR8gCjkAFv2gn33Eo-PhAox83UViqGYgNZC3vgKyP4": {
+        "hash": "120a8efb1d6d0eaa",
+        "name": "Bản sao của HƯỚNG DẪN SỬ DỤNG CÁC TÍNH NĂNG TRÊN ZALO OA (Ver2)",
+        "doc_ids": [
+          "25922860-8ffc-4c9a-acb3-f254b15cf1a6",
+          "3aad3fbe-2d09-4061-a8f4-2534c0c80347",
+          "f8f718ea-ff96-4736-8319-dab4d423fc08",
+          "e656e94e-661e-4f23-830c-8c7f348d7c4f",
+          "9e8622b8-ba6b-41b2-aa6e-5dbc80ca9a12",
+          "68946d67-0371-460c-a211-8d6b44d649c8",
+          "3d63ec50-459e-4348-b40d-0124687bdae1",
+          "9cf76f1c-86a6-4281-b3b3-bb94326eaaa4",
+          "8340d8d0-9587-4c11-b28f-8d22a20a3b2c",
+          "546ff363-2b64-45cb-b5b1-8c877bb7c19c",
+          "d53f2945-60ac-4198-ba54-c93f187570d0",
+          "7e4abd9e-46b4-47f9-aaa5-4fbe122369bf",
+          "0dc0162c-6eb4-4cf4-818a-71801cf2e360",
+          "cceb5955-46df-41ef-87f6-2e4a9782685f",
+          "5f781ab2-e750-47c8-aadf-6bf17f32228b",
+          "df54869f-79dc-42c7-95aa-d2341ffd699d",
+          "6ee0db0f-f682-495e-af9a-7babf96ae574",
+          "1bde480f-b467-4fa1-aedd-d0dc402f0630",
+          "dd708231-8f7c-4165-ad10-8806e2272345",
+          "84f27e66-ded4-4123-95b1-20cc32419433",
+          "99c97641-93a2-408a-902e-1ca738a31aed",
+          "6d38fad5-7818-45c4-ad4f-06af0f6f01a2",
+          "38dc735a-c4e9-4945-aafe-79f0b79426ae",
+          "b40eb8b1-2796-446a-b30d-818be85c89c6",
+          "42aee41d-ccee-4f31-8305-a56a2d209b20",
+          "44a45cdc-c217-4b81-8ccd-72903b5a780b",
+          "fb8136b0-aded-4e2c-9b0f-25178c3fc0c5",
+          "c01d2705-063e-4de0-8035-62097156dc37",
+          "1724bc00-022a-4e90-a490-e473e77e0189",
+          "04f8c044-590e-4b5b-8b9c-0de174054900",
+          "70f43ee7-2b6a-4b06-b030-2554dc235786"
+        ],
+        "sections": 31,
+        "synced_at": "2026-03-19T05:04:07.102570+00:00"
+      }
+    },
+    "last_sync": "2026-03-19T05:04:07.102862+00:00",
     "folder_id": "16lrimaP9Gnq4-wHOKOpkSEUO3zRbjnRT",
     "dataset_id": "5741495a-709e-45d6-a1c7-0c46ec835d15"
   }
