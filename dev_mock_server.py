@@ -957,14 +957,15 @@ def find_matching_files(search_term: str) -> list:
 
     print(f"[FileSearch] search='{search_term}', expanded={expanded}, registry={len(FILE_REGISTRY)} files")
 
+    seen_files = set()  # Deduplicate by file_name
     for doc_id, entry in FILE_REGISTRY.items():
         fname = entry["file_name"].lower()
         title = entry.get("title", "").lower()
         kb = entry.get("knowledge_base", "").lower()
         searchable = f"{fname} {title} {kb}"
         matches = [t for t in expanded if len(t) > 1 and t in searchable]
-        print(f"[FileSearch] '{entry['file_name']}' matches={matches}")
-        if matches:
+        if matches and fname not in seen_files:
+            seen_files.add(fname)
             results.append({
                 "file_name": entry["file_name"],
                 "knowledge_base": entry.get("knowledge_base", ""),
@@ -1001,12 +1002,17 @@ async def query(req: QueryRequest):
                 "processing_time_ms": elapsed,
                 "files": matching_files,
             }
-        # If no files found, also list all available files
+        # If no files found, also list all available files (deduplicated)
         if FILE_REGISTRY:
-            all_files = "\n".join([
-                f"- 📎 **{e['file_name']}** ({KB_NAME_MAP.get(e.get('knowledge_base',''), e.get('knowledge_base',''))}) - [Tải xuống](http://localhost:8000/api/v1/files/{did}/download)"
-                for did, e in FILE_REGISTRY.items()
-            ])
+            seen = set()
+            lines = []
+            for did, e in FILE_REGISTRY.items():
+                fn = e["file_name"]
+                if fn not in seen:
+                    seen.add(fn)
+                    kb_label = KB_NAME_MAP.get(e.get("knowledge_base", ""), e.get("knowledge_base", ""))
+                    lines.append(f"- 📎 **{fn}** ({kb_label}) - [Tải xuống](http://localhost:8000/api/v1/files/{did}/download)")
+            all_files = "\n".join(lines)
             elapsed = int((time.time() - start) * 1000)
             return {
                 "status": "success",
