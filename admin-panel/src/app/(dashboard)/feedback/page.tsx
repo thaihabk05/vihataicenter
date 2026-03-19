@@ -343,7 +343,7 @@ export default function FeedbackPage() {
               {/* Admin actions */}
               <div className="space-y-3 border-t pt-4">
                 <h3 className="text-sm font-medium">Cập nhật trạng thái</h3>
-                <Select value={editStatus} onValueChange={setEditStatus}>
+                <Select value={editStatus} onValueChange={(v) => { if (v) setEditStatus(v); }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Chọn trạng thái..." />
                   </SelectTrigger>

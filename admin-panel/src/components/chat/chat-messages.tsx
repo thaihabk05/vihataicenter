@@ -124,7 +124,7 @@ function FeedbackDialog({
         <div className="space-y-4 py-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">Phân loại</label>
-            <Select value={category} onValueChange={setCategory}>
+            <Select value={category} onValueChange={(v) => { if (v) setCategory(v); }}>
               <SelectTrigger>
                 <SelectValue placeholder="Chọn phân loại..." />
               </SelectTrigger>
