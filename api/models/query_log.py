@@ -1,9 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Float, Integer, ForeignKey
+from sqlalchemy import String, Text, Float, Integer, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from models.database import Base
 
@@ -11,11 +10,11 @@ from models.database import Base
 class QueryLog(Base):
     __tablename__ = "query_logs"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
     )
 
     channel: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -25,7 +24,7 @@ class QueryLog(Base):
     department_routed: Mapped[str | None] = mapped_column(
         String(50), nullable=True, index=True
     )
-    sources: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    sources: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     tokens_prompt: Mapped[int | None] = mapped_column(Integer, nullable=True)

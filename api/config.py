@@ -33,11 +33,11 @@ class Settings(BaseSettings):
     # OpenAI API (Phase 1 Embedding)
     OPENAI_API_KEY: str = ""
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://vihat:password@localhost:5432/vihat_knowledge"
+    # Database (default: SQLite for dev/Railway, PostgreSQL for production VPS)
+    DATABASE_URL: str = "sqlite+aiosqlite:///./vihat_knowledge.db"
 
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    # Redis (optional - gracefully degrades if not available)
+    REDIS_URL: str = ""
 
     # OmiFlow Webhook
     OMIFLOW_WEBHOOK_SECRET: str = ""

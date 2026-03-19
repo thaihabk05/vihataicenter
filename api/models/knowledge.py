@@ -1,9 +1,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, Integer, BigInteger, ForeignKey, ARRAY
+from sqlalchemy import String, Text, Integer, BigInteger, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID
 
 from models.database import Base
 
@@ -11,8 +10,8 @@ from models.database import Base
 class KnowledgeDocument(Base):
     __tablename__ = "knowledge_documents"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
 
     dify_document_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -25,13 +24,11 @@ class KnowledgeDocument(Base):
     file_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
-    tags: Mapped[list[str]] = mapped_column(
-        ARRAY(Text), default=list, server_default="{}"
-    )
+    tags: Mapped[list | None] = mapped_column(JSON, default=list)
     chunks_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    uploaded_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
     )
     status: Mapped[str] = mapped_column(
         String(20), default="processing", index=True
@@ -47,14 +44,14 @@ class KnowledgeDocument(Base):
 class Feedback(Base):
     __tablename__ = "feedback"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
     )
-    query_log_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("query_logs.id"), nullable=True
+    query_log_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("query_logs.id"), nullable=True
     )
-    user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
     )
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
