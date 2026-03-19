@@ -8,4 +8,4 @@ cmds = ["npm ci"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "node .next/standalone/server.js"
+cmd = "PORT=8080 HOSTNAME=0.0.0.0 node .next/standalone/server.js"
