@@ -22,4 +22,6 @@ RUN mkdir -p /data/uploads
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Railway injects PORT env var; default to 8000
+ENV PORT=8000
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT} --workers 4

@@ -31,8 +31,9 @@ postgres_data/
 redis_data/
 upload_data/
 
-# Uploads
+# Uploads & sync state
 /data/uploads/
+/data/*_sync_state.json
 
 # SSL certs (generated)
 config/ssl/*.pem
