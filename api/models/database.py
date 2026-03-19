@@ -33,7 +33,7 @@ async def init_db():
         from models.knowledge import KnowledgeDocument, Feedback  # noqa: F401
 
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(Base.metadata.create_all, checkfirst=True)
         logger.info("Database tables created/verified successfully")
     except Exception as e:
         logger.error(f"Database init error: {e}")
