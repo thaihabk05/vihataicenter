@@ -55,3 +55,4 @@ alembic/versions/*.pyc
 node_modules/
 admin-panel/dist/
 admin-panel/.next/
+config/*.json
