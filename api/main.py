@@ -40,7 +40,10 @@ async def seed_admin():
 async def lifespan(app: FastAPI):
     # Startup
     await init_db()
-    await seed_admin()
+    try:
+        await seed_admin()
+    except Exception as e:
+        logger.error(f"Seed admin failed (non-fatal): {e}")
     yield
     # Shutdown
 
