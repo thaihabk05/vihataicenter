@@ -11,6 +11,7 @@ Setup:
 5. Configure GOOGLE_SHEETS_CONFIG in .env or admin panel
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -159,8 +160,8 @@ class GoogleSheetsSync:
         import httpx
 
         try:
-            # Read and convert sheet
-            markdown = self.sheet_to_markdown(spreadsheet_id, title)
+            # Read and convert sheet — offload blocking Google API call to thread
+            markdown = await asyncio.to_thread(self.sheet_to_markdown, spreadsheet_id, title)
             content_hash = self.compute_hash(markdown)
 
             # Check if already synced with same content
@@ -214,7 +215,7 @@ class GoogleSheetsSync:
                 "dataset_id": dataset_id,
                 "synced_at": datetime.now(timezone.utc).isoformat(),
             }
-            self._save_sync_state()
+            await asyncio.to_thread(self._save_sync_state)
 
             return {
                 "synced": True,

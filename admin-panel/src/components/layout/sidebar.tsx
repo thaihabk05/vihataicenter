@@ -12,6 +12,8 @@ import {
   BookOpen,
   FileText,
   LogOut,
+  Presentation,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { canManageUsers, canViewAllStats } from "@/lib/permissions";
 import { feedbackApi } from "@/lib/api-client";
+import { useTenant } from "@/providers/tenant-provider";
 import type { User } from "@/lib/types";
 
 interface NavItem {
@@ -39,6 +42,7 @@ interface SidebarProps {
 export function Sidebar({ user, onLogout, onNavigate }: SidebarProps) {
   const pathname = usePathname();
   const [newFeedbackCount, setNewFeedbackCount] = useState(0);
+  const { tenant } = useTenant();
 
   const isAdmin = canViewAllStats(user.role);
 
@@ -84,9 +88,21 @@ export function Sidebar({ user, onLogout, onNavigate }: SidebarProps) {
       visible: isAdmin,
     },
     {
+      label: "Tạo Proposal",
+      href: "/proposals",
+      icon: Presentation,
+      visible: true,
+    },
+    {
       label: "Lịch sử",
       href: "/logs",
       icon: FileText,
+      visible: isAdmin,
+    },
+    {
+      label: "Cấu hình Proposal",
+      href: "/proposals/settings",
+      icon: Settings2,
       visible: isAdmin,
     },
     {
@@ -116,17 +132,36 @@ export function Sidebar({ user, onLogout, onNavigate }: SidebarProps) {
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-sidebar">
-      {/* Logo */}
+      {/* Logo / Tenant branding */}
       <div className="flex h-16 items-center justify-center px-4">
-        <div className="rounded-lg bg-white px-3 py-1.5">
-          <Image
-            src="/vihat-logo.png"
-            alt="ViHAT Group"
-            width={130}
-            height={73}
-            priority
-          />
-        </div>
+        {tenant?.logo_url ? (
+          <div className="rounded-lg bg-white px-3 py-1.5">
+            <Image
+              src={tenant.logo_url}
+              alt={tenant.name}
+              width={130}
+              height={73}
+              priority
+            />
+          </div>
+        ) : tenant?.name ? (
+          <div
+            className="flex items-center gap-2 rounded-lg px-3 py-1.5 font-bold text-lg"
+            style={{ color: tenant.primary_color || undefined }}
+          >
+            {tenant.name}
+          </div>
+        ) : (
+          <div className="rounded-lg bg-white px-3 py-1.5">
+            <Image
+              src="/vihat-logo.png"
+              alt="Knowledge System"
+              width={130}
+              height={73}
+              priority
+            />
+          </div>
+        )}
       </div>
 
       <Separator className="bg-sidebar-border" />

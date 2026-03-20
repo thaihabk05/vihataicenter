@@ -16,12 +16,14 @@ import {
 } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import Image from "next/image";
+import { useTenant } from "@/providers/tenant-provider";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login, user, loading } = useAuth();
+  const { tenant } = useTenant();
   const router = useRouter();
 
   // Redirect if already authenticated (in useEffect to avoid setState during render)
@@ -58,13 +60,30 @@ export default function LoginPage() {
         <Card>
           <CardHeader className="text-center">
             <div className="mx-auto mb-3">
-              <Image
-                src="/vihat-logo.png"
-                alt="ViHAT Group"
-                width={200}
-                height={88}
-                priority
-              />
+              {tenant?.logo_url ? (
+                <Image
+                  src={tenant.logo_url}
+                  alt={tenant.name}
+                  width={200}
+                  height={88}
+                  priority
+                />
+              ) : tenant?.name ? (
+                <h1
+                  className="text-2xl font-bold"
+                  style={{ color: tenant.primary_color || undefined }}
+                >
+                  {tenant.name}
+                </h1>
+              ) : (
+                <Image
+                  src="/vihat-logo.png"
+                  alt="Knowledge System"
+                  width={200}
+                  height={88}
+                  priority
+                />
+              )}
             </div>
             <CardDescription>Đăng nhập để tiếp tục</CardDescription>
           </CardHeader>
@@ -113,7 +132,7 @@ export default function LoginPage() {
           </CardContent>
         </Card>
         <p className="mt-4 text-center text-xs text-muted-foreground">
-          ViHAT Group &copy; {new Date().getFullYear()}
+          {tenant?.name || "Knowledge System"} &copy; {new Date().getFullYear()}
         </p>
       </div>
     </div>

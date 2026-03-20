@@ -12,6 +12,7 @@ Setup:
 4. Call sync_folder(folder_id, dataset_id)
 """
 
+import asyncio
 import hashlib
 import io
 import json
@@ -337,9 +338,14 @@ class GoogleDriveSync:
     ) -> dict:
         """Sync all files in a Google Drive folder to a Dify KB.
 
+        All blocking Google API calls (list, download, export) and CPU-heavy
+        preprocessing (PDF/DOCX parsing) are offloaded to a thread pool via
+        asyncio.to_thread() so the event loop stays responsive.
+
         Returns: {synced: int, skipped: int, errors: int, details: [...]}
         """
-        files = self.list_folder(folder_id)
+        # Offload blocking Google Drive list to thread
+        files = await asyncio.to_thread(self.list_folder, folder_id)
         results = {"synced": 0, "skipped": 0, "errors": 0, "details": []}
         state_key = f"folder:{folder_id}:{dataset_id}"
 
@@ -362,12 +368,12 @@ class GoogleDriveSync:
                     continue
 
                 try:
-                    # Get markdown content
+                    # Get markdown content — offload blocking calls to thread
                     if mime_type == GOOGLE_SHEETS_MIME:
-                        markdown = self._sheet_to_markdown(file_id, file_name)
+                        markdown = await asyncio.to_thread(self._sheet_to_markdown, file_id, file_name)
                     else:
-                        ext, content = self._download_file(file_id, mime_type)
-                        markdown = self._preprocess_file(ext, content, file_name)
+                        ext, content = await asyncio.to_thread(self._download_file, file_id, mime_type)
+                        markdown = await asyncio.to_thread(self._preprocess_file, ext, content, file_name)
                         if not markdown:
                             results["errors"] += 1
                             results["details"].append({"file": file_name, "status": "error", "reason": "preprocess failed"})
@@ -385,7 +391,7 @@ class GoogleDriveSync:
                             pass
 
                     # Split into sections and upload
-                    sections = self._split_sections(markdown, file_name)
+                    sections = await asyncio.to_thread(self._split_sections, markdown, file_name)
                     new_doc_ids = []
 
                     for section in sections:
@@ -428,10 +434,13 @@ class GoogleDriveSync:
                     results["errors"] += 1
                     results["details"].append({"file": file_name, "status": "error", "reason": str(e)})
 
+                # Yield control back to event loop between files
+                await asyncio.sleep(0)
+
         self._sync_state[state_key]["last_sync"] = datetime.now(timezone.utc).isoformat()
         self._sync_state[state_key]["folder_id"] = folder_id
         self._sync_state[state_key]["dataset_id"] = dataset_id
-        self._save_sync_state()
+        await asyncio.to_thread(self._save_sync_state)
 
         return results
 

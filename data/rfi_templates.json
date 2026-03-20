@@ -1,0 +1,140 @@
+{
+  "chung": {
+    "label": "Chung",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô công ty (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_agents", "label": "Số nhân viên telesales/CSKH", "type": "number", "required": true},
+      {"id": "current_solution", "label": "Giải pháp tổng đài/liên lạc đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Email", "Live Chat", "SMS"]},
+      {"id": "crm_system", "label": "CRM/Phần mềm quản lý đang dùng", "type": "text"},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "ban_le": {
+    "label": "Bán lẻ",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô công ty (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_stores", "label": "Số lượng cửa hàng/chi nhánh", "type": "number", "required": true},
+      {"id": "num_agents", "label": "Số nhân viên telesales/CSKH", "type": "number", "required": true},
+      {"id": "current_solution", "label": "Giải pháp tổng đài/liên lạc đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Email", "Live Chat", "SMS"]},
+      {"id": "peak_hours", "label": "Giờ cao điểm CSKH", "type": "text"},
+      {"id": "ecommerce_platform", "label": "Nền tảng e-commerce đang dùng", "type": "text"},
+      {"id": "loyalty_program", "label": "Chương trình loyalty/CSKH sau bán", "type": "text"},
+      {"id": "crm_system", "label": "CRM/POS đang dùng", "type": "text"},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "lam_dep": {
+    "label": "Làm đẹp",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô công ty (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_branches", "label": "Số chi nhánh/spa/salon", "type": "number", "required": true},
+      {"id": "num_agents", "label": "Số nhân viên CSKH/tư vấn", "type": "number"},
+      {"id": "current_solution", "label": "Giải pháp liên lạc đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "booking_system", "label": "Hệ thống đặt lịch đang dùng", "type": "text"},
+      {"id": "daily_customers", "label": "Số lượng KH/ngày trung bình", "type": "number"},
+      {"id": "remarketing_needs", "label": "Nhu cầu remarketing/chăm sóc KH cũ", "type": "textarea"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Instagram", "SMS"]},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "suc_khoe": {
+    "label": "Sức khỏe",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_branches", "label": "Số chi nhánh/phòng khám", "type": "number", "required": true},
+      {"id": "num_agents", "label": "Số nhân viên CSKH/lễ tân", "type": "number"},
+      {"id": "current_solution", "label": "Giải pháp liên lạc đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "his_system", "label": "Phần mềm HIS/EMR đang dùng", "type": "text"},
+      {"id": "appointment_booking", "label": "Cách đặt lịch khám hiện tại", "type": "text"},
+      {"id": "telemedicine", "label": "Nhu cầu tư vấn từ xa/telemedicine", "type": "textarea"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Email", "SMS"]},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "thoi_trang": {
+    "label": "Thời trang",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô công ty (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_stores", "label": "Số cửa hàng/showroom", "type": "number", "required": true},
+      {"id": "num_agents", "label": "Số nhân viên CSKH/telesales", "type": "number"},
+      {"id": "current_solution", "label": "Giải pháp liên lạc đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "ecommerce_platform", "label": "Nền tảng e-commerce (Shopee, Lazada, website...)", "type": "text"},
+      {"id": "social_commerce", "label": "Bán hàng qua mạng xã hội (Facebook, Zalo, TikTok...)", "type": "text"},
+      {"id": "seasonal_campaign", "label": "Có chiến dịch theo mùa/flash sale không?", "type": "text"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Instagram", "TikTok", "Email", "Live Chat"]},
+      {"id": "crm_system", "label": "CRM/POS đang dùng", "type": "text"},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "y_te": {
+    "label": "Y tế",
+    "questions": [
+      {"id": "hospital_type", "label": "Loại hình (Bệnh viện/Phòng khám/Chuỗi)", "type": "text", "required": true},
+      {"id": "num_beds", "label": "Số giường bệnh (nếu là bệnh viện)", "type": "number"},
+      {"id": "company_size", "label": "Quy mô nhân sự", "type": "number", "required": true},
+      {"id": "num_agents", "label": "Số nhân viên CSKH/tổng đài", "type": "number"},
+      {"id": "current_solution", "label": "Giải pháp tổng đài đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "his_system", "label": "Hệ thống HIS đang dùng", "type": "text"},
+      {"id": "hotline_247", "label": "Có cần hotline 24/7 không?", "type": "select", "options": ["Có", "Không", "Đang cân nhắc"]},
+      {"id": "appointment_volume", "label": "Số lượt đặt lịch khám/ngày", "type": "number"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Email", "SMS", "App"]},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "fmcg": {
+    "label": "FMCG",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô công ty (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_distributors", "label": "Số nhà phân phối/đại lý", "type": "number"},
+      {"id": "num_agents", "label": "Số nhân viên telesales/CSKH", "type": "number", "required": true},
+      {"id": "current_solution", "label": "Giải pháp tổng đài đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "distribution_channels", "label": "Kênh phân phối (GT/MT/Online)", "type": "text"},
+      {"id": "order_processing", "label": "Quy trình xử lý đơn hàng hiện tại", "type": "textarea"},
+      {"id": "telesales_campaign", "label": "Có chạy chiến dịch telesales outbound không?", "type": "text"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Email", "SMS"]},
+      {"id": "crm_system", "label": "CRM/DMS đang dùng", "type": "text"},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  },
+  "bat_dong_san": {
+    "label": "Bất động sản",
+    "questions": [
+      {"id": "company_size", "label": "Quy mô công ty (số nhân viên)", "type": "number", "required": true},
+      {"id": "num_projects", "label": "Số dự án đang triển khai", "type": "number"},
+      {"id": "num_agents", "label": "Số nhân viên sales/telesales", "type": "number", "required": true},
+      {"id": "current_solution", "label": "Giải pháp tổng đài đang dùng", "type": "text"},
+      {"id": "pain_points", "label": "Vấn đề đang gặp phải", "type": "textarea"},
+      {"id": "lead_sources", "label": "Nguồn lead chính (Facebook Ads, Google, Hotline...)", "type": "text"},
+      {"id": "call_recording", "label": "Nhu cầu ghi âm cuộc gọi", "type": "select", "options": ["Có", "Không", "Đang cân nhắc"]},
+      {"id": "crm_system", "label": "CRM đang dùng", "type": "text"},
+      {"id": "channels", "label": "Kênh liên lạc cần quản lý", "type": "multi_select", "options": ["Phone", "Zalo", "Facebook", "Email", "SMS", "Landing Page"]},
+      {"id": "outbound_volume", "label": "Số cuộc gọi outbound/ngày", "type": "number"},
+      {"id": "budget_range", "label": "Ngân sách dự kiến/tháng", "type": "select", "options": ["< 5 triệu", "5-15 triệu", "15-50 triệu", "50-100 triệu", "> 100 triệu"]},
+      {"id": "timeline", "label": "Thời gian triển khai mong muốn", "type": "text"},
+      {"id": "expectations", "label": "Kỳ vọng khi triển khai các giải pháp", "type": "textarea", "required": true}
+    ]
+  }
+}

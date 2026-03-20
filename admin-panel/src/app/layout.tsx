@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Roboto } from "next/font/google";
 import { ThemeProvider } from "next-themes";
+import { TenantProvider } from "@/providers/tenant-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
@@ -12,8 +13,8 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "ViHAT Knowledge System",
-  description: "Hệ thống quản lý tri thức nội bộ ViHAT Group",
+  title: "Knowledge System",
+  description: "Hệ thống quản lý tri thức nội bộ",
 };
 
 export default function RootLayout({
@@ -29,10 +30,12 @@ export default function RootLayout({
           defaultTheme="light"
           disableTransitionOnChange
         >
-          <AuthProvider>
-            {children}
-            <Toaster richColors closeButton position="top-right" />
-          </AuthProvider>
+          <TenantProvider>
+            <AuthProvider>
+              {children}
+              <Toaster richColors closeButton position="top-right" />
+            </AuthProvider>
+          </TenantProvider>
         </ThemeProvider>
       </body>
     </html>

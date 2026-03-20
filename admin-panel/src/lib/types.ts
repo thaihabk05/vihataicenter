@@ -46,13 +46,39 @@ export interface KnowledgeDocument {
   id: string;
   knowledge_base: string;
   title: string;
+  description?: string;
   file_name: string | null;
   file_type: string | null;
   file_size_bytes: number | null;
   tags: string[];
   chunks_count: number | null;
+  sections_count?: number | null;
   status: string;
+  source_type?: string; // "upload" | "google_drive" | "google_sheet" | "google_doc"
+  source_id?: string | null;
+  source_name?: string | null;
+  drive_url?: string;
+  download_url?: string;
+  uploaded_by?: string | null;
+  uploaded_by_name?: string | null;
   created_at: string;
+}
+
+export interface DriveSource {
+  id: string;
+  name: string;
+  description: string;
+  type: "folder" | "sheet" | "doc";
+  url: string;
+  folder_id: string;
+  knowledge_base: string;
+  product_tags: string[];
+  document_ids: string[];
+  document_count: number;
+  uploaded_by?: string;
+  uploaded_by_name?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface QueryLog {
@@ -92,6 +118,94 @@ export interface Conversation {
   title: string;
   created_at: string;
   message_count: number;
+}
+
+export interface ProposalTask {
+  task_id: string;
+  status: 'generating_content' | 'creating_document' | 'completed' | 'error';
+  customer_name: string;
+  industry: string;
+  products: string[];
+  legal_entity: string;
+  output_format: 'pptx' | 'docx';
+  file_name?: string | null;
+  error?: string | null;
+  started_at: string;
+  completed_at?: string | null;
+}
+
+export interface RFIQuestion {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'number' | 'select' | 'multi_select';
+  required?: boolean;
+  options?: string[];
+}
+
+export interface RFITemplate {
+  label: string;
+  questions: RFIQuestion[];
+}
+
+export interface ProductConfig {
+  id: string;
+  label: string;
+}
+
+// Rich Product model (SaaS-ready, versioned)
+export interface Product {
+  id: string;
+  tenant_id?: string;
+  slug: string;
+  name: string;
+  short_description: string;
+  full_description: string;
+  features: string[];
+  use_cases: string[];
+  target_industries: string[];
+  pricing_model: string;
+  competitive_advantages: string[];
+  integration_options: string[];
+  status: 'active' | 'deprecated' | 'draft';
+  sort_order: number;
+  version_count?: number;
+  related_docs_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductVersion {
+  id: string;
+  version_number: number;
+  version_label: string;
+  changed_by: string;
+  change_summary: string;
+  snapshot: Omit<Product, 'id' | 'tenant_id' | 'created_at'>;
+  created_at: string;
+}
+
+// Tenant model (SaaS-ready)
+export interface Tenant {
+  id: string;
+  slug: string;
+  name: string;
+  logo_url: string | null;
+  primary_color: string | null;
+  config: {
+    legal_entities: LegalEntity[];
+    departments: string[];
+    channels: string[];
+    features: Record<string, boolean>;
+  };
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LegalEntity {
+  id: string;
+  label: string;
+  template: string;
 }
 
 export interface Feedback {

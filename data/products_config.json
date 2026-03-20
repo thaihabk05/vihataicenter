@@ -1,0 +1,11 @@
+[
+  {"id": "tong_dai", "label": "Tổng đài"},
+  {"id": "da_kenh", "label": "Đa kênh"},
+  {"id": "p_zalo", "label": "Zalo cá nhân (P-Zalo)"},
+  {"id": "sms_brandname", "label": "SMS Brandname"},
+  {"id": "zbs", "label": "ZBS"},
+  {"id": "topup", "label": "Topup"},
+  {"id": "miniapp", "label": "MiniApp"},
+  {"id": "callbot_ai", "label": "Callbot AI"},
+  {"id": "chatbot_ai", "label": "Chatbot AI"}
+]

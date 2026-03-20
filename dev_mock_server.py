@@ -36,11 +36,15 @@ if env_path.exists():
             key = key.strip()
             val = val.split("#")[0].strip()  # remove inline comments
             if key and val:
-                os.environ.setdefault(key, val)
+                # Use setdefault but override empty values
+                if not os.environ.get(key):
+                    os.environ[key] = val
 
 DIFY_BASE_URL = os.environ.get("DIFY_BASE_URL", "http://103.29.27.91/v1")
 DIFY_API_KEY = os.environ.get("DIFY_API_KEY_GENERAL", "")
 DIFY_DATASET_API_KEY = os.environ.get("DIFY_DATASET_API_KEY", "")
+# Public URL for file downloads (used in chatbot responses to external channels)
+PUBLIC_API_URL = os.environ.get("PUBLIC_API_URL", "http://localhost:8000")
 DIFY_DATASET_IDS = {
     "sales": os.environ.get("DIFY_DATASET_ID_SALES", ""),
     "hr": os.environ.get("DIFY_DATASET_ID_HR", ""),
@@ -70,10 +74,11 @@ def simple_verify(password: str, hashed: str) -> bool:
     return hashlib.sha256(password.encode()).hexdigest() == hashed
 
 
-def create_token(user_id: str, role: str) -> str:
+def create_token(user_id: str, role: str, tenant_id: str | None = None) -> str:
+    tid = tenant_id or DEFAULT_TENANT_ID
     if HAS_JWT:
         return jwt.encode(
-            {"sub": user_id, "role": role, "exp": datetime.utcnow() + timedelta(hours=24)},
+            {"sub": user_id, "role": role, "tenant_id": tid, "exp": datetime.utcnow() + timedelta(hours=24)},
             SECRET_KEY, algorithm=ALGORITHM
         )
     return f"mock-token-{user_id}"
@@ -148,6 +153,204 @@ MOCK_USERS = [
         "created_at": "2026-03-10T14:00:00",
     },
 ]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TENANT & RICH PRODUCT MODEL (SaaS-Ready + Versioning)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+DEFAULT_TENANT_ID = "t-vihat-001"
+
+TENANTS: dict = {
+    DEFAULT_TENANT_ID: {
+        "id": DEFAULT_TENANT_ID,
+        "slug": "vihat",
+        "name": "ViHAT Group",
+        "logo_url": None,
+        "primary_color": "#1E40AF",
+        "config": {
+            "legal_entities": [
+                {"id": "omijsc", "label": "OMIJSC", "template": "proposal_omijsc.pptx"},
+                {"id": "vihat_solutions", "label": "ViHAT Solutions", "template": "proposal_vihat_solutions.pptx"},
+                {"id": "vihat_group", "label": "ViHAT GROUP", "template": "proposal_vihat_group.pptx"},
+            ],
+            "departments": ["sales", "hr", "accounting", "general", "management"],
+            "channels": ["zalo_oa", "telegram", "web_admin"],
+            "features": {"proposals": True, "knowledge": True, "chat": True},
+        },
+        "is_active": True,
+        "created_at": "2026-03-01T00:00:00",
+        "updated_at": "2026-03-01T00:00:00",
+    }
+}
+
+# Add tenant_id to all mock users
+for _u in MOCK_USERS:
+    _u["tenant_id"] = DEFAULT_TENANT_ID
+
+# Rich Product data (replaces simple products_config.json)
+PRODUCTS: dict = {}  # product_id -> product dict
+PRODUCT_VERSIONS: dict = {}  # product_id -> [version dicts]
+
+def _init_products():
+    """Initialize rich product data from products_config.json seed."""
+    global PRODUCTS, PRODUCT_VERSIONS
+    now = datetime.utcnow().isoformat()
+
+    seed_products = [
+        {
+            "slug": "tong_dai",
+            "name": "Tổng đài",
+            "short_description": "Giải pháp tổng đài IP đám mây cho doanh nghiệp",
+            "full_description": "Hệ thống tổng đài IP đám mây (Cloud PBX/Contact Center) cho phép doanh nghiệp quản lý cuộc gọi inbound/outbound, hỗ trợ phân phối cuộc gọi thông minh ACD, IVR đa cấp, ghi âm, giám sát realtime, và tích hợp CRM.",
+            "features": ["Cloud PBX", "ACD - Phân phối cuộc gọi thông minh", "IVR đa cấp", "Ghi âm cuộc gọi", "Giám sát realtime", "Báo cáo thống kê", "Click-to-call", "Softphone/WebRTC", "API tích hợp CRM"],
+            "use_cases": ["Tổng đài CSKH inbound", "Telesales outbound", "Hotline doanh nghiệp", "Contact Center đa kênh"],
+            "target_industries": ["chung", "ban_le", "y_te", "bat_dong_san", "fmcg"],
+            "pricing_model": "Gói thuê bao theo số lượng agent/tháng. Có gói Starter, Business, Enterprise.",
+            "competitive_advantages": ["Triển khai nhanh trong 24h", "Không cần đầu tư hạ tầng", "Tích hợp sẵn eSMS, Zalo OA", "SLA 99.9%", "AI routing thông minh"],
+            "integration_options": ["CRM (Salesforce, HubSpot, Zoho)", "ERP", "Zalo OA", "Facebook Messenger", "Email"],
+        },
+        {
+            "slug": "da_kenh",
+            "name": "Đa kênh",
+            "short_description": "Nền tảng chăm sóc khách hàng đa kênh hợp nhất",
+            "full_description": "Giải pháp Omnichannel Contact Center hợp nhất tất cả kênh liên lạc (Thoại, Zalo, Facebook, Email, Live Chat, SMS) vào 1 giao diện duy nhất. Agent có thể xử lý đồng thời nhiều kênh, lịch sử tương tác khách hàng được lưu trữ xuyên suốt.",
+            "features": ["Hợp nhất đa kênh", "Lịch sử tương tác 360°", "Phân phối ticket thông minh", "SLA management", "Báo cáo đa kênh", "Chatbot tích hợp", "Knowledge Base nội bộ"],
+            "use_cases": ["CSKH đa kênh", "Help Desk nội bộ", "Social Commerce support", "Quản lý ticket"],
+            "target_industries": ["chung", "ban_le", "thoi_trang", "fmcg"],
+            "pricing_model": "Gói theo số agent + số kênh kết nối. Thanh toán tháng/năm.",
+            "competitive_advantages": ["1 giao diện cho tất cả kênh", "Không bỏ lỡ tin nhắn", "Tích hợp Zalo OA chính thức", "AI auto-reply"],
+            "integration_options": ["Zalo OA", "Facebook Page", "Instagram", "Email SMTP", "Website Live Chat", "CRM"],
+        },
+        {
+            "slug": "p_zalo",
+            "name": "Zalo cá nhân (P-Zalo)",
+            "short_description": "Quản lý bán hàng qua Zalo cá nhân tập trung",
+            "full_description": "Giải pháp quản lý tập trung các tài khoản Zalo cá nhân của đội ngũ sales. Giám sát hội thoại, phân tích hiệu suất, tự động phân phối lead, và đảm bảo data khách hàng thuộc về doanh nghiệp.",
+            "features": ["Quản lý nhiều Zalo cá nhân", "Giám sát hội thoại", "Phân phối lead tự động", "Báo cáo hiệu suất sale", "Backup dữ liệu chat", "Template tin nhắn"],
+            "use_cases": ["Quản lý đội sales qua Zalo", "Bán hàng online", "CSKH cá nhân hóa"],
+            "target_industries": ["ban_le", "lam_dep", "thoi_trang", "bat_dong_san"],
+            "pricing_model": "Gói theo số tài khoản Zalo quản lý.",
+            "competitive_advantages": ["Không mất data khi sale nghỉ việc", "Giám sát chất lượng CSKH", "Tự động gán khách hàng mới"],
+            "integration_options": ["CRM", "Zalo OA", "Hệ thống ERP"],
+        },
+        {
+            "slug": "sms_brandname",
+            "name": "SMS Brandname",
+            "short_description": "Gửi SMS thương hiệu hàng loạt với tên doanh nghiệp",
+            "full_description": "Dịch vụ gửi tin nhắn SMS hiển thị tên thương hiệu doanh nghiệp (không hiện số điện thoại). Hỗ trợ SMS CSKH, SMS Marketing, OTP, và thông báo giao dịch với tỉ lệ gửi thành công cao.",
+            "features": ["SMS Brandname CSKH", "SMS Marketing", "SMS OTP", "API gửi tin tự động", "Lập lịch gửi", "Báo cáo delivery", "Template quản lý"],
+            "use_cases": ["Gửi OTP xác thực", "Thông báo giao dịch", "Chăm sóc khách hàng", "Marketing promotion"],
+            "target_industries": ["chung", "ban_le", "y_te", "fmcg", "bat_dong_san"],
+            "pricing_model": "Trả theo số lượng tin nhắn gửi thành công. Giá theo đầu số và nhà mạng.",
+            "competitive_advantages": ["Kết nối trực tiếp nhà mạng", "Tỉ lệ gửi thành công >98%", "API đơn giản", "Hỗ trợ Unicode tiếng Việt"],
+            "integration_options": ["API RESTful", "SMPP", "Webhook callback", "CRM", "ERP"],
+        },
+        {
+            "slug": "zbs",
+            "name": "ZBS",
+            "short_description": "Zalo Business Solution - Gửi thông báo qua Zalo OA",
+            "full_description": "Giải pháp gửi tin nhắn ZNS (Zalo Notification Service) qua Zalo Official Account. Gửi thông báo giao dịch, CSKH, remarketing tới khách hàng qua Zalo với tỉ lệ đọc cao.",
+            "features": ["ZNS Template Message", "Zalo OA Follower management", "Broadcast message", "API tích hợp", "Báo cáo tương tác", "Mini App integration"],
+            "use_cases": ["Thông báo đơn hàng", "Nhắc lịch hẹn", "CSKH qua Zalo", "Remarketing"],
+            "target_industries": ["chung", "ban_le", "lam_dep", "suc_khoe", "y_te"],
+            "pricing_model": "Theo số ZNS gửi thành công + phí duy trì Zalo OA.",
+            "competitive_advantages": ["Tỉ lệ đọc >90%", "Chi phí thấp hơn SMS", "Rich media (hình ảnh, nút bấm)", "Tích hợp Mini App"],
+            "integration_options": ["API RESTful", "Zalo OA SDK", "Webhook", "CRM"],
+        },
+        {
+            "slug": "topup",
+            "name": "Topup",
+            "short_description": "Nạp tiền điện thoại/data tự động cho khách hàng",
+            "full_description": "Dịch vụ nạp tiền điện thoại, data mobile tự động qua API. Dùng cho chương trình loyalty, khuyến mãi, hoàn tiền, tặng quà khách hàng bằng giá trị nạp tiền điện thoại.",
+            "features": ["Nạp tiền tự động qua API", "Hỗ trợ tất cả nhà mạng VN", "Nạp data mobile", "Báo cáo realtime", "Webhook callback"],
+            "use_cases": ["Chương trình loyalty", "Khuyến mãi nạp thẻ", "Hoàn tiền cho KH", "Thưởng nhân viên"],
+            "target_industries": ["ban_le", "fmcg", "chung"],
+            "pricing_model": "Chiết khấu theo tổng giá trị nạp/tháng.",
+            "competitive_advantages": ["Kết nối trực tiếp nhà mạng", "Nạp tức thì <5s", "API đơn giản", "Không giới hạn số lượng"],
+            "integration_options": ["API RESTful", "Webhook callback", "CRM", "Loyalty platform"],
+        },
+        {
+            "slug": "miniapp",
+            "name": "MiniApp",
+            "short_description": "Xây dựng Mini App trên Zalo cho doanh nghiệp",
+            "full_description": "Dịch vụ phát triển Mini App chạy trên nền tảng Zalo. Cho phép doanh nghiệp tạo ứng dụng nhỏ gọn trong Zalo để bán hàng, đặt lịch, tích điểm, thanh toán mà không cần khách hàng cài app riêng.",
+            "features": ["E-commerce Mini App", "Booking/đặt lịch", "Loyalty/tích điểm", "Thanh toán ZaloPay", "Push notification", "Quản lý thành viên"],
+            "use_cases": ["Bán hàng online trên Zalo", "Đặt lịch dịch vụ", "Chương trình khách hàng thân thiết", "Menu nhà hàng"],
+            "target_industries": ["ban_le", "lam_dep", "suc_khoe", "thoi_trang"],
+            "pricing_model": "Phí phát triển + phí duy trì hàng tháng.",
+            "competitive_advantages": ["Không cần cài app riêng", "75M+ người dùng Zalo", "Tích hợp thanh toán ZaloPay", "UX native trên Zalo"],
+            "integration_options": ["Zalo OA", "ZaloPay", "API backend", "CRM"],
+        },
+        {
+            "slug": "callbot_ai",
+            "name": "Callbot AI",
+            "short_description": "Robot gọi điện tự động bằng AI",
+            "full_description": "Giải pháp Callbot sử dụng AI (NLP, TTS, ASR) để thực hiện cuộc gọi tự động. Callbot có thể gọi hàng ngàn cuộc/ngày cho các kịch bản: nhắc nợ, xác nhận đơn hàng, khảo sát, telesales, nhắc lịch hẹn.",
+            "features": ["Gọi tự động hàng ngàn cuộc/ngày", "Nhận diện giọng nói (ASR)", "Tổng hợp giọng nói tự nhiên (TTS)", "Kịch bản linh hoạt (drag-drop)", "Chuyển agent khi cần", "Báo cáo kết quả chi tiết"],
+            "use_cases": ["Nhắc nợ/thanh toán", "Xác nhận đơn hàng", "Khảo sát khách hàng", "Telesales tự động", "Nhắc lịch hẹn"],
+            "target_industries": ["chung", "ban_le", "y_te", "bat_dong_san", "fmcg"],
+            "pricing_model": "Theo số phút gọi thành công + phí setup kịch bản.",
+            "competitive_advantages": ["Giọng nói tự nhiên như người thật", "Xử lý 10,000+ cuộc gọi/ngày", "Tỉ lệ hoàn thành >85%", "Tiết kiệm 70% chi phí nhân sự"],
+            "integration_options": ["API RESTful", "CRM", "Tổng đài OmiCall", "Webhook callback"],
+        },
+        {
+            "slug": "chatbot_ai",
+            "name": "Chatbot AI",
+            "short_description": "Chatbot AI tự động trả lời khách hàng đa kênh",
+            "full_description": "Giải pháp Chatbot AI sử dụng NLP/LLM để tự động trả lời khách hàng trên nhiều kênh (Zalo, Facebook, Website, App). Chatbot học từ knowledge base doanh nghiệp, hỗ trợ 24/7, và chuyển agent khi cần.",
+            "features": ["AI NLP/LLM hiểu ngữ cảnh", "Đa kênh (Zalo, FB, Web, App)", "Học từ Knowledge Base", "Chuyển agent thông minh", "Phân tích intent", "Đa ngôn ngữ", "Analytics dashboard"],
+            "use_cases": ["CSKH tự động 24/7", "FAQ automation", "Lead qualification", "Đặt hàng qua chat", "Hỗ trợ kỹ thuật"],
+            "target_industries": ["chung", "ban_le", "lam_dep", "thoi_trang", "fmcg"],
+            "pricing_model": "Gói theo số lượng conversation/tháng + phí training model.",
+            "competitive_advantages": ["Hiểu tiếng Việt tự nhiên", "Học từ dữ liệu doanh nghiệp", "Tích hợp sẵn OmiCall", "Chuyển đổi liền mạch Bot→Agent"],
+            "integration_options": ["Zalo OA", "Facebook Messenger", "Website Widget", "API", "CRM"],
+        },
+    ]
+
+    for i, p in enumerate(seed_products):
+        pid = str(uuid.uuid4())[:8]
+        PRODUCTS[pid] = {
+            "id": pid,
+            "tenant_id": DEFAULT_TENANT_ID,
+            "slug": p["slug"],
+            "name": p["name"],
+            "short_description": p.get("short_description", ""),
+            "full_description": p.get("full_description", ""),
+            "features": p.get("features", []),
+            "use_cases": p.get("use_cases", []),
+            "target_industries": p.get("target_industries", []),
+            "pricing_model": p.get("pricing_model", ""),
+            "competitive_advantages": p.get("competitive_advantages", []),
+            "integration_options": p.get("integration_options", []),
+            "status": "active",
+            "sort_order": i,
+            "created_at": now,
+            "updated_at": now,
+        }
+        PRODUCT_VERSIONS[pid] = []  # no history yet for initial seed
+
+_init_products()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# VERSION SERVICE (reusable for products, rfi_templates, etc.)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def save_version(entity_id: str, versions_store: dict, current_snapshot: dict,
+                 changed_by: str = "", version_label: str = "", change_summary: str = ""):
+    """Save current state as a version before updating."""
+    versions = versions_store.setdefault(entity_id, [])
+    version_number = len(versions) + 1
+    versions.append({
+        "id": str(uuid.uuid4())[:8],
+        "version_number": version_number,
+        "version_label": version_label or f"v{version_number}",
+        "changed_by": changed_by,
+        "change_summary": change_summary,
+        "snapshot": {k: v for k, v in current_snapshot.items() if k not in ("id", "tenant_id", "created_at")},
+        "created_at": datetime.utcnow().isoformat(),
+    })
+    return version_number
+
 
 SAMPLE_QUERIES = [
     ("Cho tôi bảng giá OmiCall Enterprise", "sales", "zalo_oa"),
@@ -422,17 +625,22 @@ KB_NAME_MAP = {
 }
 KB_NAME_REVERSE = {v: k for k, v in KB_NAME_MAP.items()}
 
+# --- Dify status cache (avoid fetching every request) ---
+_dify_status_cache: dict = {}  # doc_id → {kb, status, name, tokens}
+_dify_status_cache_ts: float = 0  # timestamp of last fetch
+_DIFY_CACHE_TTL = 30  # seconds — refresh every 30s
 
-@app.get("/api/v1/admin/knowledge/list")
-async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[str] = None):
-    """List parent documents (grouped). Each item = 1 original file with section count."""
-    if not DIFY_DATASET_API_KEY:
-        return []
 
-    # Collect all Dify docs with their status
-    all_dify_docs = {}  # doc_id → {status, name, size, ...}
+async def _refresh_dify_status_cache(knowledge_base: Optional[str] = None):
+    """Fetch Dify doc statuses with pagination and cache them."""
+    global _dify_status_cache, _dify_status_cache_ts
+    import time
+
+    now = time.time()
+    if now - _dify_status_cache_ts < _DIFY_CACHE_TTL and _dify_status_cache:
+        return _dify_status_cache
+
     datasets_to_check = {}
-
     if knowledge_base:
         ds_id = DIFY_DATASET_IDS.get(knowledge_base, "")
         if ds_id:
@@ -440,24 +648,47 @@ async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[
     else:
         datasets_to_check = {k: v for k, v in DIFY_DATASET_IDS.items() if v}
 
+    new_cache = {}
     async with httpx.AsyncClient(timeout=30.0) as client:
         for kb_key, ds_id in datasets_to_check.items():
             try:
-                resp = await client.get(
-                    f"{DIFY_BASE_URL}/datasets/{ds_id}/documents",
-                    headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
-                    params={"page": 1, "limit": 100},
-                )
-                resp.raise_for_status()
-                for doc in resp.json().get("data", []):
-                    all_dify_docs[doc["id"]] = {
-                        "kb": kb_key,
-                        "status": doc.get("indexing_status", "unknown"),
-                        "name": doc.get("name", ""),
-                        "tokens": doc.get("tokens", 0),
-                    }
+                page = 1
+                while True:
+                    resp = await client.get(
+                        f"{DIFY_BASE_URL}/datasets/{ds_id}/documents",
+                        headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
+                        params={"page": page, "limit": 100},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json().get("data", [])
+                    if not data:
+                        break
+                    for doc in data:
+                        new_cache[doc["id"]] = {
+                            "kb": kb_key,
+                            "status": doc.get("indexing_status", "unknown"),
+                            "name": doc.get("name", ""),
+                            "tokens": doc.get("tokens", 0),
+                        }
+                    if len(data) < 100:
+                        break
+                    page += 1
             except Exception as e:
                 print(f"Error fetching docs from {kb_key}: {e}")
+
+    _dify_status_cache = new_cache
+    _dify_status_cache_ts = now
+    return new_cache
+
+
+@app.get("/api/v1/admin/knowledge/list")
+async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[str] = None):
+    """List parent documents (grouped). Each item = 1 original file with section count."""
+    if not DIFY_DATASET_API_KEY:
+        return []
+
+    # Use cached Dify statuses (refreshes every 30s)
+    all_dify_docs = await _refresh_dify_status_cache(knowledge_base)
 
     # Build parent document list from registry
     docs = []
@@ -470,32 +701,42 @@ async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[
 
         # Determine overall status from sections
         section_statuses = [all_dify_docs.get(sid, {}).get("status", "unknown") for sid in section_ids]
-        if all(s == "completed" for s in section_statuses) and section_statuses:
+        if not section_ids:
+            # No section IDs tracked → treat as ready (legacy data or upload without tracking)
+            overall_status = "ready"
+        elif all(s == "completed" for s in section_statuses) and section_statuses:
             overall_status = "ready"
         elif any(s in ("indexing", "splitting", "parsing", "waiting") for s in section_statuses):
             overall_status = "indexing"
         elif any(s == "error" for s in section_statuses):
             overall_status = "error"
-        elif not section_statuses:
-            overall_status = "processing"
+        elif all(s == "unknown" for s in section_statuses):
+            # All sections not found in Dify → likely completed & archived, treat as ready
+            overall_status = "ready"
         else:
             overall_status = "ready"
 
         file_name = entry.get("file_name", "")
         ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else "txt"
 
+        source_id = entry.get("source_id")
         docs.append({
             "id": parent_id,
             "knowledge_base": kb,
             "title": entry.get("title", file_name),
+            "description": entry.get("description", ""),
             "file_name": file_name,
             "file_type": ext.upper(),
             "file_size_bytes": Path(entry.get("file_path", "")).stat().st_size if Path(entry.get("file_path", "")).exists() else 0,
-            "tags": [],
+            "tags": entry.get("tags", []),
             "sections_count": len(section_ids),
             "status": overall_status,
             "source_type": entry.get("source_type", "upload"),
+            "source_id": source_id,
+            "source_name": _get_source_name(source_id),
             "drive_url": entry.get("drive_url", ""),
+            "uploaded_by": entry.get("uploaded_by"),
+            "uploaded_by_name": _get_user_name(entry.get("uploaded_by")),
             "created_at": entry.get("uploaded_at", ""),
             "download_url": f"http://localhost:8000/api/v1/files/{parent_id}/download",
         })
@@ -662,6 +903,134 @@ def save_registry():
     _registry_path.write_text(json.dumps(FILE_REGISTRY, ensure_ascii=False, indent=2))
 
 
+# ---- Backfill FILE_REGISTRY from drive_sync_state.json ----
+# Files synced before the registration fix won't appear in the knowledge list.
+# This reads the sync state and creates missing FILE_REGISTRY entries at startup.
+_drive_state_path = Path(__file__).parent / "data" / "drive_sync_state.json"
+if _drive_state_path.exists():
+    try:
+        _drive_state = json.loads(_drive_state_path.read_text())
+        # Build reverse map: dataset_id → knowledge_base name
+        _dataset_to_kb = {v: k for k, v in DIFY_DATASET_IDS.items() if v}
+        _backfill_count = 0
+        _existing_drive_ids = {
+            e.get("drive_file_id") for e in FILE_REGISTRY.values() if e.get("drive_file_id")
+        }
+
+        for _state_key, _state_entry in _drive_state.items():
+            _dataset_id = _state_entry.get("dataset_id", "")
+            _kb_name = _dataset_to_kb.get(_dataset_id, "general")
+            _files = _state_entry.get("files", {})
+
+            for _fid, _finfo in _files.items():
+                _doc_ids = _finfo.get("doc_ids", [])
+                if not _doc_ids:
+                    continue
+                if _fid in _existing_drive_ids:
+                    continue
+
+                _fname = _finfo.get("name", _fid)
+                _parent_id = f"drive-{_fid[:12]}"
+
+                # Guess file type from name
+                _ext = _fname.rsplit(".", 1)[-1].upper() if "." in _fname else "FILE"
+                # Google native types don't have extensions — detect from name patterns
+                _is_sheet = False
+                if _ext == _fname.upper():
+                    _ext = "GSHEET"  # extensionless files from Drive are mostly Sheets
+                    _is_sheet = True
+
+                # Build proper Google URL based on detected type
+                if _is_sheet or _ext == "GSHEET":
+                    _drive_url = f"https://docs.google.com/spreadsheets/d/{_fid}"
+                elif _ext == "GDOC":
+                    _drive_url = f"https://docs.google.com/document/d/{_fid}"
+                elif _ext == "GSLIDES":
+                    _drive_url = f"https://docs.google.com/presentation/d/{_fid}"
+                else:
+                    _drive_url = f"https://drive.google.com/file/d/{_fid}/view"
+
+                FILE_REGISTRY[_parent_id] = {
+                    "file_name": _fname,
+                    "title": _fname,
+                    "file_path": "",
+                    "knowledge_base": _kb_name,
+                    "uploaded_at": _finfo.get("synced_at", datetime.now().isoformat()),
+                    "section_doc_ids": _doc_ids,
+                    "source_type": "google_drive",
+                    "drive_url": _drive_url,
+                    "drive_file_id": _fid,
+                    "file_type": _ext,
+                    "file_size_bytes": 0,
+                    "tags": [],
+                }
+                _existing_drive_ids.add(_fid)
+                _backfill_count += 1
+
+        if _backfill_count > 0:
+            save_registry()
+            print(f"[Backfill] Registered {_backfill_count} Drive files from sync state into FILE_REGISTRY")
+        # Cleanup temp vars
+        del _drive_state, _dataset_to_kb, _backfill_count, _existing_drive_ids
+    except Exception as _e:
+        print(f"[Backfill] Warning: could not backfill from drive_sync_state.json: {_e}")
+
+# --- Fix drive_url for existing GSHEET entries (one-time migration) ---
+_url_fixed = 0
+for _pid, _entry in FILE_REGISTRY.items():
+    _ft = _entry.get("file_type", "")
+    _du = _entry.get("drive_url", "")
+    _fid = _entry.get("drive_file_id", "")
+    if not _fid or not _du:
+        continue
+    # Fix GSHEET: /file/d/ → /spreadsheets/d/
+    if _ft == "GSHEET" and "/file/d/" in _du:
+        _entry["drive_url"] = f"https://docs.google.com/spreadsheets/d/{_fid}"
+        _url_fixed += 1
+    elif _ft == "GDOC" and "/file/d/" in _du:
+        _entry["drive_url"] = f"https://docs.google.com/document/d/{_fid}"
+        _url_fixed += 1
+    elif _ft == "GSLIDES" and "/file/d/" in _du:
+        _entry["drive_url"] = f"https://docs.google.com/presentation/d/{_fid}"
+        _url_fixed += 1
+if _url_fixed > 0:
+    save_registry()
+    print(f"[Migration] Fixed drive_url for {_url_fixed} Google native files")
+
+
+# ---- Drive Sources Registry ----
+# Tracks imported Drive folders/links as "sources" for grouping and bulk delete.
+DRIVE_SOURCES: dict[str, dict] = {}
+_sources_path = UPLOAD_DIR / "_sources.json"
+if _sources_path.exists():
+    try:
+        DRIVE_SOURCES = json.loads(_sources_path.read_text())
+    except Exception:
+        pass
+
+
+def save_sources():
+    _sources_path.write_text(json.dumps(DRIVE_SOURCES, ensure_ascii=False, indent=2))
+
+
+# Helper: get user name from MOCK_USERS by user_id
+def _get_user_name(user_id: str | None) -> str:
+    if not user_id:
+        return ""
+    for u in MOCK_USERS:
+        if u["id"] == user_id:
+            return u["name"]
+    return ""
+
+
+# Helper: get source name from DRIVE_SOURCES
+def _get_source_name(source_id: str | None) -> str:
+    if not source_id:
+        return ""
+    src = DRIVE_SOURCES.get(source_id)
+    return src.get("name", "") if src else ""
+
+
 from fastapi.responses import FileResponse
 
 
@@ -699,9 +1068,11 @@ async def list_files():
 
 @app.post("/api/v1/admin/knowledge/upload")
 async def upload_knowledge(
+    request: Request,
     file: UploadFile = File(...),
     knowledge_base: str = Form("general"),
     title: str = Form(""),
+    description: str = Form(""),
     tags: str = Form(""),
     auto_chunk: bool = Form(True),
     chunk_size: int = Form(800),
@@ -709,6 +1080,8 @@ async def upload_knowledge(
 ):
     """Upload document to Dify with auto pre-processing for Excel/DOCX."""
     import traceback as tb
+    user = get_current_user(request)
+    uploaded_by = user.get("sub", "")
     print(f"[Upload] Received: kb={knowledge_base}, title={title}, file={file.filename}, size={file.size}")
     ds_id = DIFY_DATASET_IDS.get(knowledge_base, "")
     if not ds_id or not DIFY_DATASET_API_KEY:
@@ -724,29 +1097,34 @@ async def upload_knowledge(
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
 
     # Auto pre-process for better RAG quality
+    # Offload CPU-heavy parsing to thread to keep event loop responsive
     preprocessed_text = None
     if ext in ("xlsx", "xls"):
-        preprocessed_text = preprocess_excel(file_content, file_name)
+        preprocessed_text = await asyncio.to_thread(preprocess_excel, file_content, file_name)
     elif ext in ("docx", "doc"):
-        preprocessed_text = preprocess_docx(file_content, file_name)
+        preprocessed_text = await asyncio.to_thread(preprocess_docx, file_content, file_name)
     elif ext == "pdf":
-        try:
-            import pdfplumber, tempfile
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        def _process_pdf():
+            import pdfplumber, tempfile as tf
+            with tf.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
                 tmp.write(file_content)
                 tmp_path = tmp.name
             parts = [f"# {title or file_name}\n"]
-            with pdfplumber.open(tmp_path) as pdf:
-                for i, page in enumerate(pdf.pages):
-                    text = page.extract_text()
-                    if text and len(text.strip()) > 20:
-                        parts.append(f"## Trang {i+1}\n{text}")
-            import os; os.unlink(tmp_path)
+            try:
+                with pdfplumber.open(tmp_path) as pdf:
+                    for i, page in enumerate(pdf.pages):
+                        text = page.extract_text()
+                        if text and len(text.strip()) > 20:
+                            parts.append(f"## Trang {i+1}\n{text}")
+            finally:
+                import os; os.unlink(tmp_path)
             if len(parts) > 1:
-                preprocessed_text = "\n\n".join(parts)
                 print(f"[Upload] PDF extracted {len(parts)-1} pages text")
-            else:
-                print(f"[Upload] PDF is image-based, uploading raw to Dify")
+                return "\n\n".join(parts)
+            print(f"[Upload] PDF is image-based, uploading raw to Dify")
+            return None
+        try:
+            preprocessed_text = await asyncio.to_thread(_process_pdf)
         except Exception as e:
             print(f"[Upload] PDF preprocess failed: {e}, uploading raw")
 
@@ -811,15 +1189,20 @@ async def upload_knowledge(
     # Parent document ID = first section ID or UUID
     parent_id = section_doc_ids[0] if section_doc_ids else str(uuid.uuid4())
 
+    parsed_tags = json.loads(tags) if tags else []
     FILE_REGISTRY[parent_id] = {
         "file_name": file_name,
         "title": title or file_name,
+        "description": description,
         "file_path": str(stored_path),
         "knowledge_base": knowledge_base,
         "source_type": "upload",
         "uploaded_at": datetime.utcnow().isoformat(),
         "section_doc_ids": section_doc_ids,
         "sections_count": len(section_doc_ids),
+        "tags": parsed_tags,
+        "uploaded_by": uploaded_by,
+        "source_id": None,
     }
     save_registry()
 
@@ -885,6 +1268,408 @@ async def delete_knowledge(doc_id: str, knowledge_base: Optional[str] = None):
         }
 
     raise HTTPException(404, "Không tìm thấy tài liệu trong hệ thống")
+
+
+# --- Edit Knowledge Document ---
+
+class EditDocumentRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+@app.put("/api/v1/admin/knowledge/{doc_id}")
+async def edit_knowledge(doc_id: str, req: EditDocumentRequest):
+    """Edit document title, description, and tags. If description changes, push summary to Dify."""
+    if doc_id not in FILE_REGISTRY:
+        raise HTTPException(404, "Document not found")
+    entry = FILE_REGISTRY[doc_id]
+    old_description = entry.get("description", "")
+
+    if req.title is not None:
+        entry["title"] = req.title
+    if req.description is not None:
+        entry["description"] = req.description
+    if req.tags is not None:
+        entry["tags"] = req.tags
+    save_registry()
+
+    # If description changed and non-empty, push summary as a Dify metadata section
+    summary_section_id = None
+    new_desc = req.description or ""
+    if new_desc and new_desc != old_description and DIFY_DATASET_API_KEY:
+        kb = entry.get("knowledge_base", "general")
+        ds_id = DIFY_DATASET_IDS.get(kb)
+        if ds_id:
+            doc_title = entry.get("title", entry.get("file_name", doc_id))
+            summary_text = f"# Tổng quan: {doc_title}\n\n{new_desc}\n\nFile: {entry.get('file_name', '')}\nLoại: {entry.get('file_type', '')}\nSản phẩm: {', '.join(entry.get('tags', []))}"
+
+            # Delete old summary section if exists
+            old_summary_id = entry.get("summary_section_id")
+            if old_summary_id:
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        await client.delete(
+                            f"{DIFY_BASE_URL}/datasets/{ds_id}/documents/{old_summary_id}",
+                            headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
+                        )
+                except Exception:
+                    pass
+
+            # Create new summary section in Dify
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    resp = await client.post(
+                        f"{DIFY_BASE_URL}/datasets/{ds_id}/document/create_by_text",
+                        headers={
+                            "Authorization": f"Bearer {DIFY_DATASET_API_KEY}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "name": f"[Summary] {doc_title}",
+                            "text": summary_text,
+                            "indexing_technique": "high_quality",
+                            "process_rule": {"mode": "automatic"},
+                        },
+                    )
+                    if resp.status_code == 200:
+                        did = resp.json().get("document", {}).get("id")
+                        if did:
+                            summary_section_id = did
+                            entry["summary_section_id"] = did
+                            # Also add to section_doc_ids for tracking
+                            if did not in entry.get("section_doc_ids", []):
+                                entry.setdefault("section_doc_ids", []).append(did)
+                            save_registry()
+                            print(f"[Edit] Pushed summary to Dify: {did}")
+            except Exception as e:
+                print(f"[Edit] Failed to push summary to Dify: {e}")
+
+    return {"status": "ok", "id": doc_id, "summary_section_id": summary_section_id}
+
+
+@app.post("/api/v1/admin/knowledge/{doc_id}/auto-summary")
+async def auto_summary(doc_id: str):
+    """Read document content and generate an AI summary using Claude."""
+    if doc_id not in FILE_REGISTRY:
+        raise HTTPException(404, "Document not found")
+
+    entry = FILE_REGISTRY[doc_id]
+    file_name = entry.get("file_name", "")
+    file_path = entry.get("file_path", "")
+    source_type = entry.get("source_type", "")
+    file_type = entry.get("file_type", "")
+    drive_file_id = entry.get("drive_file_id", "")
+
+    content_text = ""
+
+    # Strategy 1: Read from local file if available
+    if file_path and Path(file_path).exists():
+        try:
+            file_content = Path(file_path).read_bytes()
+            ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+            if ext in ("xlsx", "xls"):
+                content_text = await asyncio.to_thread(preprocess_excel, file_content, file_name) or ""
+            elif ext in ("docx", "doc"):
+                content_text = await asyncio.to_thread(preprocess_docx, file_content, file_name) or ""
+            elif ext == "pdf":
+                def _read_pdf():
+                    import pdfplumber, tempfile as tf
+                    with tf.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                        tmp.write(file_content)
+                        tmp_path = tmp.name
+                    parts = []
+                    try:
+                        with pdfplumber.open(tmp_path) as pdf:
+                            for page in pdf.pages:
+                                text = page.extract_text()
+                                if text:
+                                    parts.append(text)
+                    finally:
+                        import os; os.unlink(tmp_path)
+                    return "\n\n".join(parts)
+                content_text = await asyncio.to_thread(_read_pdf)
+            elif ext in ("txt", "md", "csv"):
+                content_text = file_content.decode("utf-8", errors="replace")
+        except Exception as e:
+            print(f"[AutoSummary] Local file read error: {e}")
+
+    # Strategy 2: Fetch from Google Drive if no local content
+    if not content_text and drive_file_id and source_type in ("google_drive", "google_sheet", "google_doc"):
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent / "api"))
+            creds_path = str(Path(__file__).parent / "config" / "google-credentials.json")
+
+            if file_type == "GSHEET" or source_type == "google_sheet":
+                from services.google_sheets_sync import GoogleSheetsSync
+                syncer = GoogleSheetsSync(
+                    credentials_path=creds_path,
+                    dify_base_url=DIFY_BASE_URL,
+                    dify_dataset_api_key=DIFY_DATASET_API_KEY,
+                )
+                content_text = await asyncio.to_thread(syncer.sheet_to_markdown, drive_file_id)
+            else:
+                from services.google_drive_sync import GoogleDriveSync
+                syncer = GoogleDriveSync(
+                    credentials_path=creds_path,
+                    dify_base_url=DIFY_BASE_URL,
+                    dify_dataset_api_key=DIFY_DATASET_API_KEY,
+                )
+                mime_map = {
+                    "GDOC": "application/vnd.google-apps.document",
+                    "GSLIDES": "application/vnd.google-apps.presentation",
+                    "PDF": "application/pdf",
+                    "DOCX": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                }
+                mime = mime_map.get(file_type, "application/vnd.google-apps.document")
+                ext, raw = await asyncio.to_thread(syncer._download_file, drive_file_id, mime)
+                content_text = await asyncio.to_thread(syncer._preprocess_file, ext, raw, file_name) or ""
+        except Exception as e:
+            print(f"[AutoSummary] Google Drive fetch error: {e}")
+
+    if not content_text:
+        raise HTTPException(400, "Không thể đọc nội dung tài liệu. File có thể không tồn tại hoặc không hỗ trợ.")
+
+    # Truncate to avoid token limits (keep first ~8000 chars)
+    truncated = content_text[:8000]
+
+    # Call Claude to generate summary
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(500, "ANTHROPIC_API_KEY chưa được cấu hình")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 500,
+                    "system": (
+                        "Bạn là trợ lý AI tóm tắt nội dung tài liệu nội bộ công ty. "
+                        "Hãy viết MÔ TẢ NGẮN GỌN (3-5 câu) bằng tiếng Việt về nội dung chính của tài liệu. "
+                        "Tập trung vào: tài liệu này nói về gì, dùng cho mục đích gì, thông tin chính là gì. "
+                        "KHÔNG dùng bullet points. Viết thành đoạn văn liền mạch. "
+                        "KHÔNG lặp lại tên file. Chỉ trả về nội dung mô tả, không thêm gì khác."
+                    ),
+                    "messages": [{"role": "user", "content": f"Tên file: {file_name}\n\nNội dung:\n{truncated}"}],
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                summary = data["content"][0]["text"].strip()
+                print(f"[AutoSummary] Generated for '{file_name}': {summary[:100]}...")
+                return {"status": "ok", "summary": summary, "content_length": len(content_text)}
+            else:
+                print(f"[AutoSummary] Claude API error {resp.status_code}: {resp.text[:200]}")
+                raise HTTPException(500, f"Lỗi Claude API: {resp.status_code}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[AutoSummary] Error: {e}")
+        raise HTTPException(500, f"Lỗi tạo tóm tắt: {str(e)}")
+
+
+# --- Knowledge Sources CRUD ---
+
+@app.get("/api/v1/admin/knowledge/sources")
+async def list_sources():
+    """List all imported Drive sources (folders, sheets, docs)."""
+    sources = []
+    for sid, src in DRIVE_SOURCES.items():
+        # Count documents that still exist in FILE_REGISTRY
+        valid_doc_ids = [d for d in src.get("document_ids", []) if d in FILE_REGISTRY]
+        sources.append({
+            **src,
+            "document_count": len(valid_doc_ids),
+            "uploaded_by_name": _get_user_name(src.get("uploaded_by")),
+        })
+    sources.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+    return sources
+
+
+@app.delete("/api/v1/admin/knowledge/sources/{source_id}")
+async def delete_source(source_id: str):
+    """Delete a source and ALL its documents from the system (NOT from Google Drive)."""
+    if source_id not in DRIVE_SOURCES:
+        raise HTTPException(404, "Source not found")
+    source = DRIVE_SOURCES[source_id]
+    doc_ids = list(source.get("document_ids", []))
+
+    # Cascade delete all documents from this source
+    deleted_count = 0
+    for doc_id in doc_ids:
+        if doc_id in FILE_REGISTRY:
+            try:
+                await delete_knowledge(doc_id)
+                deleted_count += 1
+            except Exception:
+                # If Dify delete fails, still remove from registry
+                if doc_id in FILE_REGISTRY:
+                    del FILE_REGISTRY[doc_id]
+                    deleted_count += 1
+
+    save_registry()
+    del DRIVE_SOURCES[source_id]
+    save_sources()
+    return {"status": "ok", "deleted_documents": deleted_count, "message": f"Đã xóa nguồn và {deleted_count} tài liệu khỏi hệ thống"}
+
+
+# --- Re-index by URL ---
+
+class ReindexByUrlRequest(BaseModel):
+    url: str
+
+@app.post("/api/v1/admin/knowledge/search-by-url")
+async def search_knowledge_by_url(req: ReindexByUrlRequest):
+    """Search FILE_REGISTRY for documents matching a Google Drive/Sheet/Doc URL."""
+    url = req.url.strip()
+
+    # Extract file ID from various Google URL formats
+    file_id = None
+    id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+    if id_match:
+        file_id = id_match.group(1)
+    else:
+        # Try /file/d/ format
+        id_match = re.search(r"/file/d/([a-zA-Z0-9_-]+)", url)
+        if id_match:
+            file_id = id_match.group(1)
+
+    if not file_id:
+        raise HTTPException(400, "Không thể trích xuất ID từ URL. Vui lòng nhập đúng link Google Sheet/Doc/Drive.")
+
+    # Search FILE_REGISTRY by drive_file_id or drive_url containing the file_id
+    matches = []
+    for parent_id, entry in FILE_REGISTRY.items():
+        entry_fid = entry.get("drive_file_id", "")
+        entry_url = entry.get("drive_url", "")
+        if entry_fid == file_id or file_id in entry_url:
+            matches.append({
+                "id": parent_id,
+                "title": entry.get("title", ""),
+                "file_name": entry.get("file_name", ""),
+                "file_type": entry.get("file_type", ""),
+                "knowledge_base": entry.get("knowledge_base", ""),
+                "drive_url": entry_url,
+                "drive_file_id": entry_fid,
+                "source_type": entry.get("source_type", ""),
+                "tags": entry.get("tags", []),
+                "sections_count": len(entry.get("section_doc_ids", [])),
+                "created_at": entry.get("uploaded_at", ""),
+            })
+
+    return {"file_id": file_id, "matches": matches}
+
+
+@app.post("/api/v1/admin/knowledge/reindex-by-url")
+async def reindex_by_url(req: ReindexByUrlRequest, request: Request):
+    """Delete existing index for a Google Sheet/Doc URL, then re-import it."""
+    url = req.url.strip()
+
+    # Extract file ID
+    file_id = None
+    id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", url)
+    if id_match:
+        file_id = id_match.group(1)
+    if not file_id:
+        raise HTTPException(400, "Không thể trích xuất ID từ URL.")
+
+    # Find matching document in FILE_REGISTRY
+    found_parent_id = None
+    found_entry = None
+    for parent_id, entry in FILE_REGISTRY.items():
+        entry_fid = entry.get("drive_file_id", "")
+        entry_url = entry.get("drive_url", "")
+        if entry_fid == file_id or file_id in entry_url:
+            found_parent_id = parent_id
+            found_entry = dict(entry)
+            break
+
+    if not found_parent_id or not found_entry:
+        raise HTTPException(404, "Không tìm thấy tài liệu với URL này trong hệ thống.")
+
+    # Save info before deleting
+    knowledge_base = found_entry.get("knowledge_base", "general")
+    tags = found_entry.get("tags", [])
+    title = found_entry.get("title", "")
+    source_id = found_entry.get("source_id", "")
+    source_type = found_entry.get("source_type", "")
+    drive_url = found_entry.get("drive_url", url)
+
+    # Step 1: Delete existing index (sections from Dify + FILE_REGISTRY)
+    try:
+        await delete_knowledge(found_parent_id)
+    except HTTPException:
+        # Even if Dify delete fails, continue with re-import
+        if found_parent_id in FILE_REGISTRY:
+            del FILE_REGISTRY[found_parent_id]
+            save_registry()
+
+    # Also remove from DRIVE_SOURCES document_ids if applicable
+    if source_id and source_id in DRIVE_SOURCES:
+        doc_ids = DRIVE_SOURCES[source_id].get("document_ids", [])
+        if found_parent_id in doc_ids:
+            doc_ids.remove(found_parent_id)
+            save_sources()
+
+    # Step 2: Re-import
+    dataset_id = DIFY_DATASET_IDS.get(knowledge_base)
+    if not dataset_id:
+        raise HTTPException(400, f"Không tìm thấy dataset cho knowledge_base '{knowledge_base}'")
+
+    if not DIFY_DATASET_API_KEY:
+        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
+
+    # Get current user
+    user = get_current_user(request)
+    uploaded_by = user.get("sub", "")
+
+    is_sheet = "/spreadsheets/d/" in drive_url or source_type in ("google_sheet",)
+    is_doc = "/document/d/" in drive_url or source_type in ("google_doc",)
+
+    # Default to sheet if we can't determine type from URL
+    if not is_sheet and not is_doc:
+        file_type = found_entry.get("file_type", "")
+        if file_type == "GSHEET":
+            is_sheet = True
+        elif file_type == "GDOC":
+            is_doc = True
+        else:
+            # For drive files, try re-import as sheet since that's the common case
+            is_sheet = True
+
+    task_id = str(uuid.uuid4())[:8]
+    link_type = "sheet" if is_sheet else "doc"
+    IMPORT_TASKS[task_id] = {
+        "task_id": task_id,
+        "type": f"reindex-{link_type}",
+        "status": "importing",
+        "url": drive_url,
+        "title": title,
+        "knowledge_base": knowledge_base,
+        "source_id": source_id,
+        "sections_count": 0,
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+    }
+
+    asyncio.create_task(_run_link_import(
+        task_id, file_id, dataset_id, knowledge_base,
+        drive_url, title, is_sheet, source_id, tags, uploaded_by,
+    ))
+
+    return {
+        "task_id": task_id,
+        "status": "importing",
+        "deleted_doc_id": found_parent_id,
+        "message": f"Đã xóa index cũ và đang re-index '{title}'...",
+    }
 
 
 # --- Logs ---
@@ -1002,15 +1787,20 @@ FILE_REQUEST_PATTERNS = [
     "cho tôi file", "cho anh file", "cho em file",
     "cho tôi tài liệu", "cho anh tài liệu",
     "cho bảng giá", "cho anh bảng giá", "cho tôi bảng giá",
+    "cho anh link", "cho tôi link", "cho em link",
+    "cho link", "cho đường link", "cho url",
     # "tải/lấy/xem/download"
     "tải file", "lấy file", "xem file", "download file",
     "tải tài liệu", "lấy tài liệu", "tải bảng giá", "lấy bảng giá",
+    # "link" variants
+    "link file", "link tài liệu", "link bảng giá", "link báo giá",
+    "đường link", "share link", "chia sẻ link",
     # file-centric
     "file gốc", "file bảng giá",
 ]
 
 # These words confirm it's a file request (not just "gửi anh lời chào")
-FILE_CONFIRM_WORDS = {"file", "tài liệu", "bảng giá", "báo giá", "document", "tải", "download"}
+FILE_CONFIRM_WORDS = {"file", "tài liệu", "bảng giá", "báo giá", "document", "tải", "download", "link", "đường link", "url"}
 
 
 def detect_file_request(query: str) -> Optional[str]:
@@ -1024,47 +1814,135 @@ def detect_file_request(query: str) -> Optional[str]:
     return None
 
 
-SEARCH_ALIASES = {
+# Product aliases — user mentions a specific product/service
+PRODUCT_ALIASES = {
     "omicall": ["omi", "omicall", "tổng đài", "contact center", "dịch vụ omi"],
     "esms": ["esms", "sms", "brandname", "tin nhắn"],
-    "bảng giá": ["bảng giá", "giá", "pricing", "báo giá", "price"],
-    "phúc lợi": ["phúc lợi", "phuc loi", "chính sách", "welfare", "chế độ"],
-    "nội quy": ["nội quy", "noi quy", "quy định", "lao động"],
+    "zns": ["zns", "zalo zns", "zalo notification"],
+    "becare": ["becare", "be care"],
+    "omiflow": ["omiflow", "omi flow", "automation"],
+    "sdk": ["sdk", "omi sdk"],
+    "zcc": ["zcc", "zalo cloud connect"],
+    "voice_brandname": ["voice brandname", "voice bn"],
 }
+# Topic aliases — what kind of document
+TOPIC_ALIASES = {
+    "bảng giá": ["bảng giá", "giá", "pricing", "báo giá", "price"],
+    "phúc lợi": ["phúc lợi", "phuc loi", "welfare", "chế độ"],
+    "nội quy": ["nội quy", "noi quy", "quy định", "lao động"],
+    "hướng dẫn": ["hướng dẫn", "tài liệu hướng dẫn", "user guide", "manual"],
+    "proposal": ["proposal", "đề xuất"],
+    "profile": ["profile", "giới thiệu công ty"],
+    "hợp đồng": ["hợp đồng", "hop dong", "contract"],
+    "chính sách": ["chính sách", "chinh sach", "policy"],
+}
+
+STOPWORDS = {"cho", "anh", "tôi", "em", "gửi", "link", "đường", "file", "tài", "liệu",
+             "mới", "nhất", "nhé", "ạ", "à", "nha", "xin", "hãy", "giúp", "tải", "lấy",
+             "xem", "download", "share", "chia", "sẻ", "về", "của", "và", "các", "những",
+             "đi", "dùm", "giùm", "với", "được", "không", "nào"}
+
+# Combined for backward compat in detect logic
+SEARCH_ALIASES = {**PRODUCT_ALIASES, **TOPIC_ALIASES}
 
 
 def find_matching_files(search_term: str) -> list:
-    """Find files matching search term with alias expansion."""
+    """Find files matching search term with product/topic separation + relevance scoring.
+
+    Logic:
+    - If user mentions a specific product (zns, omicall...) → files MUST match that product
+    - Topic (bảng giá, hướng dẫn...) further filters/boosts relevance
+    - Files matching both product + topic score highest
+    """
     results = []
     search_lower = search_term.lower()
 
-    # Expand with aliases
-    expanded = set()
-    for word in search_lower.split():
-        if len(word) > 1:
-            expanded.add(word)
-    for key, aliases in SEARCH_ALIASES.items():
+    # Detect which product and topic groups the user mentioned
+    matched_products = []
+    for key, aliases in PRODUCT_ALIASES.items():
         if any(a in search_lower for a in aliases):
-            expanded.update(aliases)
-            expanded.add(key)
+            matched_products.append(key)
 
-    print(f"[FileSearch] search='{search_term}', expanded={expanded}, registry={len(FILE_REGISTRY)} files")
+    matched_topics = []
+    for key, aliases in TOPIC_ALIASES.items():
+        if any(a in search_lower for a in aliases):
+            matched_topics.append(key)
 
-    seen_files = set()  # Deduplicate by file_name
+    # Build expanded search terms for each group
+    product_terms = set()
+    for p in matched_products:
+        product_terms.update(PRODUCT_ALIASES[p])
+        product_terms.add(p)
+
+    topic_terms = set()
+    for t in matched_topics:
+        topic_terms.update(TOPIC_ALIASES[t])
+        topic_terms.add(t)
+
+    # Extra content words not covered by aliases
+    content_words = set()
+    for word in search_lower.split():
+        if len(word) > 1 and word not in STOPWORDS:
+            content_words.add(word)
+
+    print(f"[FileSearch] query='{search_term}', products={matched_products}, "
+          f"topics={matched_topics}, extra_words={content_words - product_terms - topic_terms}")
+
+    seen_files = set()
     for doc_id, entry in FILE_REGISTRY.items():
         fname = entry["file_name"].lower()
         title = entry.get("title", "").lower()
         kb = entry.get("knowledge_base", "").lower()
-        searchable = f"{fname} {title} {kb}"
-        matches = [t for t in expanded if len(t) > 1 and t in searchable]
-        if matches and fname not in seen_files:
-            seen_files.add(fname)
-            results.append({
-                "file_name": entry["file_name"],
-                "knowledge_base": entry.get("knowledge_base", ""),
-                "download_url": f"http://localhost:8000/api/v1/files/{doc_id}/download",
-            })
-    return results
+        tags = " ".join(entry.get("tags", [])).lower()
+        searchable = f"{fname} {title} {kb} {tags}"
+
+        if fname in seen_files:
+            continue
+
+        # Score: product match is most important
+        product_score = 0
+        for p in matched_products:
+            if any(a in searchable for a in PRODUCT_ALIASES[p]):
+                product_score += 20
+
+        topic_score = 0
+        for t in matched_topics:
+            if any(a in searchable for a in TOPIC_ALIASES[t]):
+                topic_score += 10
+
+        extra_score = sum(1 for w in content_words if len(w) > 2 and w in searchable and w not in STOPWORDS)
+
+        total_score = product_score + topic_score + extra_score
+
+        # FILTER: if user asked for a specific product, file MUST match that product
+        if matched_products and product_score == 0:
+            continue
+
+        # FILTER: must match at least something meaningful
+        if total_score == 0:
+            continue
+
+        # If only topic matched (no product specified), require topic match
+        if not matched_products and matched_topics and topic_score == 0:
+            continue
+
+        seen_files.add(fname)
+        drive_url = entry.get("drive_url", "")
+        download_url = f"{PUBLIC_API_URL}/api/v1/files/{doc_id}/download"
+        results.append({
+            "file_name": entry["file_name"],
+            "knowledge_base": entry.get("knowledge_base", ""),
+            "download_url": download_url,
+            "drive_url": drive_url,
+            "source_type": entry.get("source_type", "upload"),
+            "_score": total_score,
+        })
+
+    # Sort by relevance, limit to 10
+    results.sort(key=lambda x: x.get("_score", 0), reverse=True)
+    for r in results:
+        r.pop("_score", None)
+    return results[:10]
 
 
 @app.post("/api/v1/query")
@@ -1081,40 +1959,26 @@ async def query(req: QueryRequest):
     if file_search:
         matching_files = find_matching_files(file_search)
         if matching_files:
-            file_list = "\n".join([
-                f"- 📎 **{f['file_name']}** ([Tải xuống]({f['download_url']}))"
-                for f in matching_files
-            ])
+            file_lines = []
+            for f in matching_files:
+                # Use drive_url for Google Drive files (shareable), download_url for uploaded files
+                if f.get("drive_url"):
+                    file_lines.append(f"- 📎 **{f['file_name']}** — [Xem trên Drive]({f['drive_url']})")
+                else:
+                    file_lines.append(f"- 📎 **{f['file_name']}** — [Tải xuống]({f['download_url']})")
+            file_list = "\n".join(file_lines)
             elapsed = int((time.time() - start) * 1000)
             return {
                 "status": "success",
-                "answer": f"Đây là các file bạn yêu cầu:\n\n{file_list}\n\nBạn có thể click vào link để tải xuống.",
+                "answer": f"Đây là các tài liệu bạn yêu cầu:\n\n{file_list}\n\nBạn có thể click vào link để xem hoặc tải xuống.",
                 "sources": [],
                 "conversation_id": str(uuid.uuid4()),
                 "tokens_used": {"prompt": 0, "completion": 0},
                 "processing_time_ms": elapsed,
                 "files": matching_files,
             }
-        # If no files found, also list all available files (deduplicated)
-        if FILE_REGISTRY:
-            seen = set()
-            lines = []
-            for did, e in FILE_REGISTRY.items():
-                fn = e["file_name"]
-                if fn not in seen:
-                    seen.add(fn)
-                    kb_label = KB_NAME_MAP.get(e.get("knowledge_base", ""), e.get("knowledge_base", ""))
-                    lines.append(f"- 📎 **{fn}** ({kb_label}) - [Tải xuống](http://localhost:8000/api/v1/files/{did}/download)")
-            all_files = "\n".join(lines)
-            elapsed = int((time.time() - start) * 1000)
-            return {
-                "status": "success",
-                "answer": f"Không tìm thấy file phù hợp với yêu cầu. Đây là danh sách tất cả tài liệu hiện có:\n\n{all_files}",
-                "sources": [],
-                "conversation_id": str(uuid.uuid4()),
-                "tokens_used": {"prompt": 0, "completion": 0},
-                "processing_time_ms": elapsed,
-            }
+        # No matching files found — fall through to Dify RAG for a knowledge-based answer
+        print(f"[FileSearch] No matching files, falling through to Dify RAG")
 
     # Step 1: Basic normalization (fast)
     normalized = normalize_query(req.query)
@@ -1168,9 +2032,14 @@ async def query(req: QueryRequest):
 
     elapsed = int((time.time() - start) * 1000)
 
+    answer = data.get("answer", "")
+
+    # Post-processing: attach real document links based on RAG sources
+    answer = _enrich_answer_with_links(answer, sources)
+
     return {
         "status": "success",
-        "answer": data.get("answer", ""),
+        "answer": answer,
         "sources": sources,
         "conversation_id": data.get("conversation_id", str(uuid.uuid4())),
         "tokens_used": {
@@ -1179,6 +2048,67 @@ async def query(req: QueryRequest):
         },
         "processing_time_ms": elapsed,
     }
+
+
+def _enrich_answer_with_links(answer: str, sources: list) -> str:
+    """Post-process Dify answer: remove hallucinated links & append real document links.
+
+    Dify LLM sometimes creates fake links like 'Xem chi tiết tại: [link](...)'.
+    We strip those and append real links from FILE_REGISTRY based on source docs.
+    """
+    import re
+
+    # 1. Remove ALL markdown links from Dify answer (Dify LLM hallucinates wrong URLs)
+    # We will append correct links at the end based on FILE_REGISTRY
+    def _replace_link(m):
+        text = m.group(1)
+        # Keep only display text, strip the URL
+        return text
+
+    answer = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', _replace_link, answer)
+    # Also strip bare URLs that Dify might include
+    answer = re.sub(r'https?://docs\.google\.com/\S+', '', answer)
+    answer = re.sub(r'https?://drive\.google\.com/\S+', '', answer)
+
+    # 2. Find matching real documents from registry based on sources
+    if not sources:
+        return answer
+
+    seen_links = set()
+    real_links = []
+    for src in sources[:3]:
+        doc_name = src.get("document", "")
+        score = src.get("score", 0)
+        if score < 0.55 or not doc_name:
+            continue
+
+        # Match source doc name to FILE_REGISTRY entries
+        doc_lower = doc_name.lower()
+        for pid, entry in FILE_REGISTRY.items():
+            fname = entry.get("file_name", "").lower()
+            title = entry.get("title", "").lower()
+            # Match by partial name (Dify section names are like "Phúc lợi ViHAT — 2. Mừng Thâm niên")
+            base_name = doc_lower.split("—")[0].strip() if "—" in doc_lower else doc_lower
+            if base_name and (base_name in fname or base_name in title or fname in base_name or title in base_name):
+                drive_url = entry.get("drive_url", "")
+                if drive_url and drive_url not in seen_links:
+                    seen_links.add(drive_url)
+                    display_name = entry.get("title", entry.get("file_name", ""))
+                    real_links.append(f"🔗 [{display_name}]({drive_url})")
+                elif not drive_url:
+                    dl_url = f"{PUBLIC_API_URL}/api/v1/files/{pid}/download"
+                    if dl_url not in seen_links:
+                        seen_links.add(dl_url)
+                        display_name = entry.get("title", entry.get("file_name", ""))
+                        real_links.append(f"📎 [{display_name}]({dl_url})")
+                break
+
+    # 3. Append real links if found
+    if real_links:
+        links_section = "\n\n📂 **Tài liệu tham khảo:**\n" + "\n".join(f"- {l}" for l in real_links)
+        answer += links_section
+
+    return answer
 
 
 # --- Health ---
@@ -1413,99 +2343,177 @@ async def update_feedback_status(feedback_id: str, body: FeedbackStatusUpdate):
     return data[feedback_id]
 
 
-# --- Google Drive / Sheet Import Endpoints ---
+# --- Google Drive / Sheet Import Endpoints (Async Background Tasks) ---
+
+import asyncio
+
+# In-memory import task tracker
+IMPORT_TASKS: dict = {}  # task_id -> {status, type, url, knowledge_base, ...}
 
 class ImportDriveRequest(BaseModel):
     folder_url: str
     knowledge_base: str
+    name: str = ""
+    description: str = ""
+    product_tags: List[str] = []
     note: str = ""
 
 class ImportLinkRequest(BaseModel):
     url: str
     knowledge_base: str
     title: str = ""
+    description: str = ""
+    product_tags: List[str] = []
     note: str = ""
 
 
-@app.post("/api/v1/admin/knowledge/import-drive")
-async def import_drive(req: ImportDriveRequest):
-    """Import files from a Google Drive folder into a Dify knowledge base."""
-    # Extract folder_id from URL
-    m = re.search(r"/folders/([a-zA-Z0-9_-]+)", req.folder_url)
-    if not m:
-        raise HTTPException(400, "Invalid Google Drive folder URL. Expected a URL containing /folders/<id>")
-    folder_id = m.group(1)
-
-    # Resolve dataset
-    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
-    if not dataset_id:
-        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'. Valid: {list(DIFY_DATASET_IDS.keys())}")
-
-    if not DIFY_DATASET_API_KEY:
-        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
-
+async def _run_drive_import(task_id: str, folder_id: str, dataset_id: str, knowledge_base: str, folder_url: str, source_id: str = "", product_tags: List[str] = [], uploaded_by: str = ""):
+    """Background worker: import Drive folder."""
+    task = IMPORT_TASKS[task_id]
     try:
         import sys
         sys.path.insert(0, str(Path(__file__).parent / "api"))
         from services.google_drive_sync import GoogleDriveSync
 
+        creds_path = str(Path(__file__).parent / "config" / "google-credentials.json")
+        if not Path(creds_path).exists():
+            raise Exception("File google-credentials.json không tồn tại trong config/")
+
         syncer = GoogleDriveSync(
-            credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+            credentials_path=creds_path,
             dify_base_url=DIFY_BASE_URL,
             dify_dataset_api_key=DIFY_DATASET_API_KEY,
         )
 
-        # List files first
-        files = syncer.list_folder(folder_id)
-        files_found = len(files)
+        # List files first — offload blocking Google API call to thread
+        task["status_detail"] = "Đang quét thư mục..."
+        try:
+            files = await asyncio.to_thread(syncer.list_folder, folder_id)
+        except Exception as list_err:
+            err_msg = str(list_err)
+            if "404" in err_msg or "not found" in err_msg.lower():
+                raise Exception(f"Không tìm thấy thư mục. Hãy kiểm tra URL và đảm bảo đã chia sẻ thư mục với Service Account email.")
+            elif "403" in err_msg or "permission" in err_msg.lower() or "forbidden" in err_msg.lower():
+                raise Exception(f"Không có quyền truy cập thư mục. Hãy chia sẻ thư mục với Service Account email (Viewer).")
+            raise Exception(f"Lỗi quét thư mục: {err_msg}")
 
-        # Sync folder
+        task["files_found"] = len(files)
+
+        if len(files) == 0:
+            task["status"] = "completed"
+            task["synced"] = 0
+            task["errors"] = 0
+            task["details"] = []
+            task["status_detail"] = "Thư mục trống hoặc không có file được hỗ trợ"
+            task["completed_at"] = datetime.now().isoformat()
+            return
+
+        # Sync folder with progress updates
+        task["status_detail"] = f"Đang sync {len(files)} file..."
+        task["files_processed"] = 0
         result = await syncer.sync_folder(folder_id, dataset_id)
 
-        return {
-            "status": "success",
-            "files_found": files_found,
-            "synced": result.get("synced", 0),
-            "errors": result.get("errors", 0),
-            "details": result.get("details", []),
-        }
-    except FileNotFoundError:
-        raise HTTPException(400, "Google credentials not found. Place google-credentials.json in config/")
-    except HTTPException:
-        raise
+        # Register synced files in FILE_REGISTRY so they appear in the knowledge list
+        sync_state = syncer._sync_state
+        state_key = f"folder:{folder_id}:{dataset_id}"
+        folder_state = sync_state.get(state_key, {}).get("files", {})
+        registered_count = 0
+
+        for file_info in files:
+            fid = file_info["id"]
+            fname = file_info["name"]
+            fs = folder_state.get(fid, {})
+            doc_ids = fs.get("doc_ids", [])
+
+            # Skip if no doc_ids (not synced) or already in registry
+            if not doc_ids:
+                continue
+            # Check if already registered (by drive file id)
+            already = any(
+                e.get("drive_file_id") == fid
+                for e in FILE_REGISTRY.values()
+            )
+            if already:
+                continue
+
+            parent_id = f"drive-{fid[:12]}"
+            mime = file_info.get("mimeType", "")
+            ext_map = {
+                "application/vnd.google-apps.spreadsheet": "GSHEET",
+                "application/vnd.google-apps.document": "GDOC",
+                "application/vnd.google-apps.presentation": "GSLIDES",
+                "application/pdf": "PDF",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+                "text/plain": "TXT",
+            }
+            file_type = ext_map.get(mime, fname.rsplit(".", 1)[-1].upper() if "." in fname else "FILE")
+
+            # Build proper Google URL based on mime type
+            if mime == "application/vnd.google-apps.spreadsheet":
+                drive_url = f"https://docs.google.com/spreadsheets/d/{fid}"
+            elif mime == "application/vnd.google-apps.document":
+                drive_url = f"https://docs.google.com/document/d/{fid}"
+            elif mime == "application/vnd.google-apps.presentation":
+                drive_url = f"https://docs.google.com/presentation/d/{fid}"
+            else:
+                drive_url = f"https://drive.google.com/file/d/{fid}/view"
+
+            FILE_REGISTRY[parent_id] = {
+                "file_name": fname,
+                "title": fname,
+                "file_path": "",  # No local file for Drive imports
+                "knowledge_base": knowledge_base,
+                "uploaded_at": datetime.now().isoformat(),
+                "section_doc_ids": doc_ids,
+                "source_type": "google_drive",
+                "drive_url": drive_url,
+                "drive_file_id": fid,
+                "file_type": file_type,
+                "file_size_bytes": int(file_info.get("size", 0)) if file_info.get("size") else 0,
+                "tags": product_tags,
+                "source_id": source_id or None,
+                "uploaded_by": uploaded_by or None,
+                "description": "",
+            }
+            # Track document in source
+            if source_id and source_id in DRIVE_SOURCES:
+                DRIVE_SOURCES[source_id]["document_ids"].append(parent_id)
+            registered_count += 1
+
+        if registered_count > 0:
+            save_registry()
+        if source_id and source_id in DRIVE_SOURCES:
+            save_sources()
+
+        task["status"] = "completed"
+        task["synced"] = result.get("synced", 0)
+        task["skipped"] = result.get("skipped", 0)
+        task["errors"] = result.get("errors", 0)
+        task["details"] = result.get("details", [])
+        task["files_processed"] = len(files)
+        task["registered"] = registered_count
+        task["status_detail"] = f"Hoàn tất: {result.get('synced', 0)} synced, {result.get('skipped', 0)} bỏ qua, {result.get('errors', 0)} lỗi"
+        task["completed_at"] = datetime.now().isoformat()
     except Exception as e:
-        raise HTTPException(500, f"Drive import failed: {e}")
+        import traceback
+        task["status"] = "error"
+        task["error"] = str(e)
+        task["error_trace"] = traceback.format_exc()
+        task["completed_at"] = datetime.now().isoformat()
 
 
-@app.post("/api/v1/admin/knowledge/import-link")
-async def import_link(req: ImportLinkRequest):
-    """Import a single Google Sheet or Google Doc into a Dify knowledge base."""
-    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
-    if not dataset_id:
-        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'. Valid: {list(DIFY_DATASET_IDS.keys())}")
-
-    if not DIFY_DATASET_API_KEY:
-        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
-
-    is_sheet = "/spreadsheets/d/" in req.url
-    is_doc = "/document/d/" in req.url
-
-    if not is_sheet and not is_doc:
-        raise HTTPException(400, "URL must be a Google Sheet (/spreadsheets/d/...) or Google Doc (/document/d/...)")
-
-    # Extract document ID from URL
-    id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", req.url)
-    if not id_match:
-        raise HTTPException(400, "Could not extract document ID from URL")
-    doc_id = id_match.group(1)
-
+async def _run_link_import(task_id: str, doc_id: str, dataset_id: str, knowledge_base: str, url: str, title: str, is_sheet: bool, source_id: str = "", product_tags: List[str] = [], uploaded_by: str = ""):
+    """Background worker: import single Sheet or Doc."""
+    task = IMPORT_TASKS[task_id]
     try:
         import sys
         sys.path.insert(0, str(Path(__file__).parent / "api"))
+        task["status_detail"] = "Đang tải và xử lý tài liệu..."
 
         if is_sheet:
             from services.google_sheets_sync import GoogleSheetsSync
-
             syncer = GoogleSheetsSync(
                 credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
                 dify_base_url=DIFY_BASE_URL,
@@ -1514,34 +2522,55 @@ async def import_link(req: ImportLinkRequest):
             result = await syncer.sync_sheet(
                 spreadsheet_id=doc_id,
                 dataset_id=dataset_id,
-                title=req.title,
+                title=title,
                 force=True,
             )
-            return {
-                "status": "success" if result.get("synced") else "no_changes",
-                "title": req.title or doc_id,
-                "sections_count": result.get("sections", 0),
-            }
-        else:
-            # Google Doc — use GoogleDriveSync to download and upload
-            from services.google_drive_sync import GoogleDriveSync
+            sections_count = result.get("sections", 0)
+            doc_ids = result.get("doc_ids", [])
 
+            # Register in FILE_REGISTRY
+            parent_id = f"drive-sheet-{doc_id[:12]}"
+            FILE_REGISTRY[parent_id] = {
+                "file_name": title or doc_id,
+                "title": title or doc_id,
+                "file_path": "",
+                "knowledge_base": knowledge_base,
+                "uploaded_at": datetime.now().isoformat(),
+                "section_doc_ids": doc_ids,
+                "source_type": "google_sheet",
+                "drive_url": url,
+                "drive_file_id": doc_id,
+                "file_type": "GSHEET",
+                "file_size_bytes": 0,
+                "tags": product_tags,
+                "source_id": source_id or None,
+                "uploaded_by": uploaded_by or None,
+                "description": "",
+            }
+            save_registry()
+            if source_id and source_id in DRIVE_SOURCES:
+                DRIVE_SOURCES[source_id]["document_ids"].append(parent_id)
+                save_sources()
+
+            task["status"] = "completed"
+            task["sections_count"] = sections_count
+            task["completed_at"] = datetime.now().isoformat()
+        else:
+            from services.google_drive_sync import GoogleDriveSync
             syncer = GoogleDriveSync(
                 credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
                 dify_base_url=DIFY_BASE_URL,
                 dify_dataset_api_key=DIFY_DATASET_API_KEY,
             )
-
-            # Download the doc
-            ext, content = syncer._download_file(doc_id, "application/vnd.google-apps.document")
-            title = req.title or doc_id
-            markdown = syncer._preprocess_file(ext, content, title)
+            ext, content = await asyncio.to_thread(syncer._download_file, doc_id, "application/vnd.google-apps.document")
+            doc_title = title or doc_id
+            markdown = await asyncio.to_thread(syncer._preprocess_file, ext, content, doc_title)
             if not markdown:
-                raise HTTPException(500, "Failed to process Google Doc content")
+                raise Exception("Failed to process Google Doc content")
 
-            # Split into sections and upload
-            sections = syncer._split_sections(markdown, title)
+            sections = await asyncio.to_thread(syncer._split_sections, markdown, doc_title)
             uploaded = 0
+            uploaded_doc_ids = []
             async with httpx.AsyncClient(timeout=120.0) as client:
                 for section in sections:
                     resp = await client.post(
@@ -1559,19 +2588,175 @@ async def import_link(req: ImportLinkRequest):
                     )
                     if resp.status_code == 200:
                         uploaded += 1
+                        did = resp.json().get("document", {}).get("id")
+                        if did:
+                            uploaded_doc_ids.append(did)
 
-            return {
-                "status": "success",
-                "title": title,
-                "sections_count": uploaded,
+            # Register in FILE_REGISTRY
+            parent_id = f"drive-doc-{doc_id[:12]}"
+            FILE_REGISTRY[parent_id] = {
+                "file_name": doc_title,
+                "title": doc_title,
+                "file_path": "",
+                "knowledge_base": knowledge_base,
+                "uploaded_at": datetime.now().isoformat(),
+                "section_doc_ids": uploaded_doc_ids,
+                "source_type": "google_doc",
+                "drive_url": url,
+                "drive_file_id": doc_id,
+                "file_type": "GDOC",
+                "file_size_bytes": 0,
+                "tags": product_tags,
+                "source_id": source_id or None,
+                "uploaded_by": uploaded_by or None,
+                "description": "",
             }
+            save_registry()
+            if source_id and source_id in DRIVE_SOURCES:
+                DRIVE_SOURCES[source_id]["document_ids"].append(parent_id)
+                save_sources()
 
-    except FileNotFoundError:
-        raise HTTPException(400, "Google credentials not found. Place google-credentials.json in config/")
-    except HTTPException:
-        raise
+            task["status"] = "completed"
+            task["title"] = doc_title
+            task["sections_count"] = uploaded
+            task["completed_at"] = datetime.now().isoformat()
+
     except Exception as e:
-        raise HTTPException(500, f"Link import failed: {e}")
+        task["status"] = "error"
+        task["error"] = str(e)
+        task["completed_at"] = datetime.now().isoformat()
+
+
+@app.post("/api/v1/admin/knowledge/import-drive")
+async def import_drive(req: ImportDriveRequest, request: Request):
+    """Start async import of Google Drive folder. Returns task_id immediately."""
+    m = re.search(r"/folders/([a-zA-Z0-9_-]+)", req.folder_url)
+    if not m:
+        raise HTTPException(400, "Invalid Google Drive folder URL. Expected a URL containing /folders/<id>")
+    folder_id = m.group(1)
+
+    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
+    if not dataset_id:
+        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'. Valid: {list(DIFY_DATASET_IDS.keys())}")
+
+    if not DIFY_DATASET_API_KEY:
+        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
+
+    # Get current user for uploaded_by
+    user = get_current_user(request)
+    uploaded_by = user.get("sub", "")
+
+    # Create source entry
+    source_id = f"src-{uuid.uuid4().hex[:8]}"
+    DRIVE_SOURCES[source_id] = {
+        "id": source_id,
+        "name": req.name or f"Drive folder {folder_id[:8]}",
+        "description": req.description,
+        "type": "folder",
+        "url": req.folder_url,
+        "folder_id": folder_id,
+        "knowledge_base": req.knowledge_base,
+        "product_tags": req.product_tags,
+        "document_ids": [],
+        "uploaded_by": uploaded_by,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+    save_sources()
+
+    task_id = str(uuid.uuid4())[:8]
+    IMPORT_TASKS[task_id] = {
+        "task_id": task_id,
+        "type": "folder",
+        "status": "importing",
+        "status_detail": "Đang khởi tạo...",
+        "url": req.folder_url,
+        "title": req.name,
+        "knowledge_base": req.knowledge_base,
+        "source_id": source_id,
+        "files_found": 0,
+        "files_processed": 0,
+        "synced": 0,
+        "skipped": 0,
+        "errors": 0,
+        "details": [],
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+    }
+
+    asyncio.create_task(_run_drive_import(task_id, folder_id, dataset_id, req.knowledge_base, req.folder_url, source_id, req.product_tags, uploaded_by))
+
+    return {"task_id": task_id, "status": "importing", "source_id": source_id, "message": "Import đang chạy nền..."}
+
+
+@app.post("/api/v1/admin/knowledge/import-link")
+async def import_link(req: ImportLinkRequest, request: Request):
+    """Start async import of a single Google Sheet or Doc. Returns task_id immediately."""
+    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
+    if not dataset_id:
+        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'. Valid: {list(DIFY_DATASET_IDS.keys())}")
+
+    if not DIFY_DATASET_API_KEY:
+        raise HTTPException(500, "DIFY_DATASET_API_KEY not configured")
+
+    is_sheet = "/spreadsheets/d/" in req.url
+    is_doc = "/document/d/" in req.url
+
+    if not is_sheet and not is_doc:
+        raise HTTPException(400, "URL must be a Google Sheet (/spreadsheets/d/...) or Google Doc (/document/d/...)")
+
+    id_match = re.search(r"/d/([a-zA-Z0-9_-]+)", req.url)
+    if not id_match:
+        raise HTTPException(400, "Could not extract document ID from URL")
+    doc_id = id_match.group(1)
+
+    # Get current user for uploaded_by
+    user = get_current_user(request)
+    uploaded_by = user.get("sub", "")
+
+    # Create source entry
+    source_id = f"src-{uuid.uuid4().hex[:8]}"
+    link_type = "sheet" if is_sheet else "doc"
+    DRIVE_SOURCES[source_id] = {
+        "id": source_id,
+        "name": req.title or doc_id,
+        "description": req.description,
+        "type": link_type,
+        "url": req.url,
+        "folder_id": doc_id,
+        "knowledge_base": req.knowledge_base,
+        "product_tags": req.product_tags,
+        "document_ids": [],
+        "uploaded_by": uploaded_by,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+    save_sources()
+
+    task_id = str(uuid.uuid4())[:8]
+    IMPORT_TASKS[task_id] = {
+        "task_id": task_id,
+        "type": link_type,
+        "status": "importing",
+        "url": req.url,
+        "title": req.title or doc_id,
+        "knowledge_base": req.knowledge_base,
+        "source_id": source_id,
+        "sections_count": 0,
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+    }
+
+    asyncio.create_task(_run_link_import(task_id, doc_id, dataset_id, req.knowledge_base, req.url, req.title, is_sheet, source_id, req.product_tags, uploaded_by))
+
+    return {"task_id": task_id, "status": "importing", "source_id": source_id, "message": "Import đang chạy nền..."}
+
+
+@app.get("/api/v1/admin/knowledge/import-tasks")
+async def list_import_tasks():
+    """List all import tasks (active and recent)."""
+    tasks = sorted(IMPORT_TASKS.values(), key=lambda t: t.get("started_at", ""), reverse=True)
+    return tasks
 
 
 @app.get("/api/v1/admin/knowledge/drive-status")
@@ -1612,6 +2797,915 @@ async def drive_status():
 
     return result
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PROPOSAL BUILDER (Sales Proposal Generator)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+PROPOSALS_DIR = Path(__file__).parent / "data" / "proposals"
+PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+TEMPLATES_DIR = Path(__file__).parent / "data" / "templates"
+TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+PRODUCTS_CONFIG_PATH = Path(__file__).parent / "data" / "products_config.json"
+RFI_TEMPLATES_PATH = Path(__file__).parent / "data" / "rfi_templates.json"
+
+PROPOSAL_TASKS: dict = {}  # task_id -> task info
+
+def _get_legal_entities() -> list:
+    """Get legal entities from current tenant config."""
+    tenant = TENANTS.get(DEFAULT_TENANT_ID, {})
+    return tenant.get("config", {}).get("legal_entities", [])
+
+LEGAL_ENTITIES = _get_legal_entities()  # backward compat
+
+def _load_products_config() -> list:
+    """Legacy: return products as simple {id, label} for backward compat."""
+    return [{"id": p["slug"], "label": p["name"]} for p in PRODUCTS.values() if p.get("status") == "active"]
+
+def _save_products_config(data: list):
+    """Legacy: no-op, products now stored in-memory."""
+    pass
+
+def _load_rfi_templates() -> dict:
+    try:
+        return json.loads(RFI_TEMPLATES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+def _save_rfi_templates(data: dict):
+    RFI_TEMPLATES_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# --- Legacy Products Config API (backward compat) ---
+
+@app.get("/api/v1/proposals/products")
+async def get_products_legacy():
+    """Legacy endpoint: returns simple {id, label} list."""
+    return _load_products_config()
+
+@app.put("/api/v1/proposals/products")
+async def update_products_legacy(products: list):
+    """Legacy: no-op for backward compat."""
+    return {"status": "ok", "count": len(products)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TENANT API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _resolve_tenant(request: Request):
+    """Resolve tenant from X-Tenant-Slug header, falling back to default."""
+    slug = request.headers.get("X-Tenant-Slug", "")
+    if slug:
+        for t in TENANTS.values():
+            if t["slug"] == slug:
+                return t
+    return TENANTS.get(DEFAULT_TENANT_ID)
+
+@app.get("/api/v1/tenant/by-slug/{slug}")
+async def get_tenant_by_slug(slug: str):
+    """Get tenant info by slug (public — used by frontend to resolve subdomain)."""
+    for t in TENANTS.values():
+        if t["slug"] == slug:
+            # Return safe public info (no sensitive config)
+            return {
+                "id": t["id"],
+                "slug": t["slug"],
+                "name": t["name"],
+                "logo_url": t.get("logo_url"),
+                "primary_color": t.get("primary_color"),
+                "config": {
+                    "departments": t.get("config", {}).get("departments", []),
+                    "features": t.get("config", {}).get("features", {}),
+                },
+                "is_active": t.get("is_active", True),
+            }
+    raise HTTPException(404, "Tenant not found")
+
+@app.get("/api/v1/tenant")
+async def get_current_tenant(request: Request):
+    """Get current tenant info (branding, config). Resolves from X-Tenant-Slug header."""
+    tenant = _resolve_tenant(request)
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+    return tenant
+
+@app.put("/api/v1/tenant")
+async def update_tenant(body: dict, request: Request):
+    """Update current tenant settings (super_admin only)."""
+    tenant = _resolve_tenant(request)
+    if not tenant:
+        raise HTTPException(404, "Tenant not found")
+    for key in ["name", "logo_url", "primary_color", "config"]:
+        if key in body:
+            tenant[key] = body[key]
+    tenant["updated_at"] = datetime.utcnow().isoformat()
+    return tenant
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RICH PRODUCTS API (with versioning)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class ProductCreateRequest(BaseModel):
+    slug: str
+    name: str
+    short_description: str = ""
+    full_description: str = ""
+    features: list = []
+    use_cases: list = []
+    target_industries: list = []
+    pricing_model: str = ""
+    competitive_advantages: list = []
+    integration_options: list = []
+    sort_order: int = 0
+
+class ProductUpdateRequest(BaseModel):
+    name: str = ""
+    short_description: str = ""
+    full_description: str = ""
+    features: list = []
+    use_cases: list = []
+    target_industries: list = []
+    pricing_model: str = ""
+    competitive_advantages: list = []
+    integration_options: list = []
+    sort_order: int = 0
+    version_label: str = ""
+    change_summary: str = ""
+
+@app.get("/api/v1/products")
+async def list_products():
+    """List all active products for current tenant."""
+    products = [p for p in PRODUCTS.values()
+                if p.get("tenant_id") == DEFAULT_TENANT_ID and p.get("status") != "deprecated"]
+    products.sort(key=lambda x: x.get("sort_order", 0))
+    # Add version count and related docs count
+    for p in products:
+        p["version_count"] = len(PRODUCT_VERSIONS.get(p["id"], []))
+        # Count knowledge docs with matching tag
+        p["related_docs_count"] = sum(
+            1 for d in MOCK_KNOWLEDGE_DOCS
+            if p["slug"] in (d.get("tags") or [])
+        )
+    return products
+
+@app.get("/api/v1/products/{product_id}")
+async def get_product(product_id: str):
+    """Get product detail by ID or slug."""
+    product = PRODUCTS.get(product_id)
+    if not product:
+        # Try by slug
+        product = next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    result = {**product}
+    result["version_count"] = len(PRODUCT_VERSIONS.get(product["id"], []))
+    result["related_docs_count"] = sum(
+        1 for d in MOCK_KNOWLEDGE_DOCS
+        if product["slug"] in (d.get("tags") or [])
+    )
+    return result
+
+@app.post("/api/v1/products")
+async def create_product(req: ProductCreateRequest):
+    """Create a new product."""
+    # Check slug uniqueness within tenant
+    if any(p["slug"] == req.slug and p["tenant_id"] == DEFAULT_TENANT_ID for p in PRODUCTS.values()):
+        raise HTTPException(400, f"Product slug '{req.slug}' already exists")
+    now = datetime.utcnow().isoformat()
+    pid = str(uuid.uuid4())[:8]
+    PRODUCTS[pid] = {
+        "id": pid,
+        "tenant_id": DEFAULT_TENANT_ID,
+        "slug": req.slug,
+        "name": req.name,
+        "short_description": req.short_description,
+        "full_description": req.full_description,
+        "features": req.features,
+        "use_cases": req.use_cases,
+        "target_industries": req.target_industries,
+        "pricing_model": req.pricing_model,
+        "competitive_advantages": req.competitive_advantages,
+        "integration_options": req.integration_options,
+        "status": "active",
+        "sort_order": req.sort_order,
+        "created_at": now,
+        "updated_at": now,
+    }
+    PRODUCT_VERSIONS[pid] = []
+    return PRODUCTS[pid]
+
+@app.put("/api/v1/products/{product_id}")
+async def update_product(product_id: str, req: ProductUpdateRequest):
+    """Update product and auto-save version history."""
+    product = PRODUCTS.get(product_id)
+    if not product:
+        product = next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+
+    pid = product["id"]
+    # Save current state as version before updating
+    save_version(pid, PRODUCT_VERSIONS, product,
+                 version_label=req.version_label, change_summary=req.change_summary)
+
+    # Update fields (only non-empty values)
+    if req.name:
+        product["name"] = req.name
+    product["short_description"] = req.short_description
+    product["full_description"] = req.full_description
+    product["features"] = req.features
+    product["use_cases"] = req.use_cases
+    product["target_industries"] = req.target_industries
+    product["pricing_model"] = req.pricing_model
+    product["competitive_advantages"] = req.competitive_advantages
+    product["integration_options"] = req.integration_options
+    if req.sort_order is not None:
+        product["sort_order"] = req.sort_order
+    product["updated_at"] = datetime.utcnow().isoformat()
+
+    return product
+
+@app.delete("/api/v1/products/{product_id}")
+async def delete_product(product_id: str):
+    """Soft-delete product (set status=deprecated)."""
+    product = PRODUCTS.get(product_id)
+    if not product:
+        product = next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    product["status"] = "deprecated"
+    product["updated_at"] = datetime.utcnow().isoformat()
+    return {"status": "ok", "id": product["id"]}
+
+@app.get("/api/v1/products/{product_id}/versions")
+async def list_product_versions(product_id: str):
+    """List version history for a product."""
+    product = PRODUCTS.get(product_id) or next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    versions = PRODUCT_VERSIONS.get(product["id"], [])
+    return sorted(versions, key=lambda v: v["version_number"], reverse=True)
+
+@app.get("/api/v1/products/{product_id}/versions/{version_number}")
+async def get_product_version(product_id: str, version_number: int):
+    """Get a specific version of a product."""
+    product = PRODUCTS.get(product_id) or next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    versions = PRODUCT_VERSIONS.get(product["id"], [])
+    version = next((v for v in versions if v["version_number"] == version_number), None)
+    if not version:
+        raise HTTPException(404, f"Version {version_number} not found")
+    return version
+
+@app.post("/api/v1/products/{product_id}/versions/{version_number}/restore")
+async def restore_product_version(product_id: str, version_number: int):
+    """Restore product to an older version."""
+    product = PRODUCTS.get(product_id) or next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    pid = product["id"]
+    versions = PRODUCT_VERSIONS.get(pid, [])
+    version = next((v for v in versions if v["version_number"] == version_number), None)
+    if not version:
+        raise HTTPException(404, f"Version {version_number} not found")
+
+    # Save current state as new version before restoring
+    save_version(pid, PRODUCT_VERSIONS, product,
+                 version_label=f"Before restore to v{version_number}",
+                 change_summary=f"Auto-saved before restoring to version {version_number}")
+
+    # Restore from snapshot
+    snapshot = version["snapshot"]
+    for key, val in snapshot.items():
+        if key not in ("id", "tenant_id", "created_at"):
+            product[key] = val
+    product["updated_at"] = datetime.utcnow().isoformat()
+
+    return product
+
+@app.get("/api/v1/products/{product_id}/documents")
+async def get_product_documents(product_id: str):
+    """Get knowledge documents related to this product (by tag)."""
+    product = PRODUCTS.get(product_id) or next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
+    if not product:
+        raise HTTPException(404, "Product not found")
+    docs = [d for d in MOCK_KNOWLEDGE_DOCS if product["slug"] in (d.get("tags") or [])]
+    return docs
+
+
+# --- RFI Templates API ---
+
+@app.get("/api/v1/proposals/rfi")
+async def list_rfi_templates():
+    templates = _load_rfi_templates()
+    return {k: {"label": v["label"], "questions_count": len(v.get("questions", []))} for k, v in templates.items()}
+
+@app.get("/api/v1/proposals/rfi/{industry}")
+async def get_rfi_template(industry: str):
+    templates = _load_rfi_templates()
+    if industry not in templates:
+        raise HTTPException(404, f"RFI template '{industry}' not found")
+    return templates[industry]
+
+@app.post("/api/v1/proposals/rfi")
+async def create_rfi_template(body: dict):
+    industry = body.get("industry", "")
+    label = body.get("label", "")
+    questions = body.get("questions", [])
+    if not industry or not label:
+        raise HTTPException(400, "industry and label are required")
+    templates = _load_rfi_templates()
+    templates[industry] = {"label": label, "questions": questions}
+    _save_rfi_templates(templates)
+    return {"status": "ok", "industry": industry}
+
+@app.put("/api/v1/proposals/rfi/{industry}")
+async def update_rfi_template(industry: str, body: dict):
+    templates = _load_rfi_templates()
+    if industry not in templates:
+        raise HTTPException(404, f"RFI template '{industry}' not found")
+    if "label" in body:
+        templates[industry]["label"] = body["label"]
+    if "questions" in body:
+        templates[industry]["questions"] = body["questions"]
+    _save_rfi_templates(templates)
+    return {"status": "ok", "industry": industry}
+
+@app.delete("/api/v1/proposals/rfi/{industry}")
+async def delete_rfi_template(industry: str):
+    templates = _load_rfi_templates()
+    if industry not in templates:
+        raise HTTPException(404, f"RFI template '{industry}' not found")
+    del templates[industry]
+    _save_rfi_templates(templates)
+    return {"status": "ok"}
+
+
+# --- Legal Entities ---
+
+@app.get("/api/v1/proposals/entities")
+async def get_legal_entities():
+    return _get_legal_entities()
+
+
+# --- Company Lookup ---
+
+class CompanyLookupRequest(BaseModel):
+    tax_code: str = ""
+    website: str = ""
+    company_name: str = ""
+
+@app.post("/api/v1/proposals/lookup-company")
+async def lookup_company(req: CompanyLookupRequest):
+    """Lookup company info via tax code or website."""
+    info = {"company_name": req.company_name, "source": "manual"}
+
+    # Try tax code lookup
+    if req.tax_code:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"https://api.vietqr.io/v2/business/{req.tax_code}")
+                if resp.status_code == 200:
+                    data = resp.json().get("data", {})
+                    if data:
+                        info.update({
+                            "company_name": data.get("name", req.company_name),
+                            "short_name": data.get("shortName", ""),
+                            "address": data.get("address", ""),
+                            "source": "tax_lookup",
+                        })
+        except Exception as e:
+            print(f"[CompanyLookup] Tax code lookup error: {e}")
+
+    # Try website analysis via Claude
+    if req.website and ANTHROPIC_API_KEY:
+        try:
+            # Fetch website content
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                web_resp = await client.get(req.website if req.website.startswith("http") else f"https://{req.website}")
+                if web_resp.status_code == 200:
+                    # Extract text (simple, first 3000 chars)
+                    import re as _re
+                    text = _re.sub(r'<[^>]+>', ' ', web_resp.text)
+                    text = _re.sub(r'\s+', ' ', text)[:3000]
+
+                    # Ask Claude to analyze
+                    ai_resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": ANTHROPIC_API_KEY,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": "claude-sonnet-4-20250514",
+                            "max_tokens": 500,
+                            "system": "Bạn là trợ lý phân tích doanh nghiệp. Trích xuất thông tin từ nội dung website. Trả JSON: {\"industry\": \"ngành nghề\", \"description\": \"mô tả ngắn\", \"products_services\": \"sản phẩm/dịch vụ chính\", \"company_size_estimate\": \"ước tính quy mô\"}. Chỉ trả JSON, không giải thích.",
+                            "messages": [{"role": "user", "content": f"Website: {req.website}\n\nNội dung:\n{text}"}],
+                        },
+                    )
+                    if ai_resp.status_code == 200:
+                        ai_text = ai_resp.json()["content"][0]["text"].strip()
+                        # Try parse JSON
+                        try:
+                            parsed = json.loads(ai_text)
+                            info["website_analysis"] = parsed
+                            info["source"] = "website_analysis"
+                        except Exception:
+                            info["website_analysis"] = {"raw": ai_text}
+        except Exception as e:
+            print(f"[CompanyLookup] Website analysis error: {e}")
+
+    return info
+
+
+# --- Parse Brief with AI ---
+
+class ParseBriefRequest(BaseModel):
+    brief: str
+    industry: str
+    products: list = []
+
+@app.post("/api/v1/proposals/parse-brief")
+async def parse_brief(req: ParseBriefRequest):
+    """AI reads brief text and fills RFI answers."""
+    templates = _load_rfi_templates()
+    rfi = templates.get(req.industry, templates.get("chung", {}))
+    questions = rfi.get("questions", [])
+
+    if not ANTHROPIC_API_KEY:
+        return {"answers": {}, "message": "No ANTHROPIC_API_KEY configured"}
+
+    if not req.brief.strip():
+        return {"answers": {}, "message": "No brief provided"}
+
+    # Build question list for Claude
+    q_list = "\n".join([f"- {q['id']}: {q['label']} (type: {q['type']})" for q in questions])
+    products_text = ", ".join(req.products) if req.products else "chưa chọn"
+
+    prompt = f"""Đọc brief sau từ khách hàng và điền vào các trường RFI bên dưới.
+Sản phẩm quan tâm: {products_text}
+
+Brief:
+\"\"\"
+{req.brief}
+\"\"\"
+
+Các trường RFI cần điền:
+{q_list}
+
+Trả về JSON object mapping question_id -> giá trị.
+- Với type "number": trả số
+- Với type "text" hoặc "textarea": trả chuỗi
+- Với type "select": trả 1 giá trị phù hợp
+- Với type "multi_select": trả array các giá trị phù hợp
+- Nếu brief không đề cập, trả "" (chuỗi rỗng)
+Chỉ trả JSON, không giải thích."""
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 1000,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            if resp.status_code == 200:
+                text = resp.json()["content"][0]["text"].strip()
+                # Extract JSON from response
+                if "```" in text:
+                    text = text.split("```")[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                    text = text.strip()
+                answers = json.loads(text)
+                return {"answers": answers}
+            else:
+                return {"answers": {}, "message": f"AI error: {resp.status_code}"}
+    except Exception as e:
+        print(f"[ParseBrief] Error: {e}")
+        return {"answers": {}, "message": str(e)}
+
+
+# --- Proposal Generation (Async Background) ---
+
+class ProposalGenerateRequest(BaseModel):
+    customer_name: str
+    industry: str = "chung"
+    products: list = []
+    rfi_answers: dict = {}
+    company_info: dict = {}
+    legal_entity: str = "omijsc"
+    output_format: str = "pptx"  # pptx or docx
+
+
+async def _generate_proposal_content(task: dict) -> dict:
+    """Call Claude API to generate proposal content with rich product knowledge."""
+    # Get rich product info for selected products
+    selected_slugs = task.get("products", [])
+    rich_products = [p for p in PRODUCTS.values()
+                     if p.get("status") == "active" and (p["slug"] in selected_slugs or p["name"] in selected_slugs)]
+
+    # Build detailed product knowledge for Claude
+    products_detail = ""
+    for p in rich_products:
+        products_detail += f"""
+### {p['name']} ({p['slug']})
+- Mô tả: {p.get('full_description', p.get('short_description', ''))}
+- Tính năng: {', '.join(p.get('features', []))}
+- Use cases: {', '.join(p.get('use_cases', []))}
+- Giá: {p.get('pricing_model', 'Liên hệ')}
+- Điểm mạnh: {', '.join(p.get('competitive_advantages', []))}
+- Tích hợp: {', '.join(p.get('integration_options', []))}
+"""
+
+    # All available products for reference
+    all_products = [p for p in PRODUCTS.values() if p.get("status") == "active"]
+    all_products_brief = ", ".join([f"{p['name']}" for p in all_products])
+
+    rfi_text = "\n".join([f"- {k}: {v}" for k, v in task.get("rfi_answers", {}).items() if v])
+    company_text = json.dumps(task.get("company_info", {}), ensure_ascii=False)
+
+    # Get tenant info for branding
+    tenant = TENANTS.get(DEFAULT_TENANT_ID, {})
+    company_name = tenant.get("name", "ViHAT Group")
+
+    prompt = f"""Bạn là chuyên gia tư vấn giải pháp của {company_name}. Tạo nội dung proposal cho khách hàng.
+
+THÔNG TIN KHÁCH HÀNG:
+- Tên: {task['customer_name']}
+- Ngành: {task['industry']}
+- Thông tin DN: {company_text}
+
+RFI (Thông tin khảo sát):
+{rfi_text}
+
+=== THÔNG TIN CHI TIẾT SẢN PHẨM ĐƯỢC CHỌN ===
+{products_detail if products_detail.strip() else 'Chưa chọn sản phẩm cụ thể'}
+
+=== TẤT CẢ SẢN PHẨM CÓ THỂ ĐỀ XUẤT ===
+{all_products_brief}
+
+YÊU CẦU:
+1. Phân tích nhu cầu khách hàng từ RFI
+2. Đề xuất giải pháp phù hợp từ sản phẩm đã chọn, có thể gợi ý thêm sản phẩm khác nếu phù hợp
+3. Tạo nội dung proposal có cấu trúc, chi tiết về tính năng và lợi ích cụ thể
+
+Trả về JSON:
+{{
+  "title": "Tiêu đề proposal",
+  "subtitle": "Phụ đề",
+  "sections": [
+    {{
+      "heading": "Tên section",
+      "type": "bullets|text|table",
+      "content": ["dòng 1", "dòng 2"] hoặc "đoạn văn" hoặc [["Header1","Header2"],["row1col1","row1col2"]]
+    }}
+  ]
+}}
+
+Các section nên bao gồm (tùy chỉnh theo case):
+- Tổng quan nhu cầu khách hàng
+- Giải pháp đề xuất
+- Chi tiết tính năng sản phẩm
+- Lợi ích khi triển khai
+- Lộ trình triển khai
+- Bảng giá/gói dịch vụ (nếu phù hợp)
+
+Viết bằng tiếng Việt, chuyên nghiệp. Chỉ trả JSON."""
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json={
+                "model": "claude-sonnet-4-20250514",
+                "max_tokens": 4000,
+                "messages": [{"role": "user", "content": prompt}],
+            },
+        )
+        if resp.status_code == 200:
+            text = resp.json()["content"][0]["text"].strip()
+            if "```" in text:
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+                text = text.strip()
+            return json.loads(text)
+        else:
+            raise Exception(f"Claude API error: {resp.status_code}")
+
+
+def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
+    """Create PPTX proposal from AI content + template."""
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    # Try loading template
+    entities = _get_legal_entities()
+    entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default", "template": ""})
+    template_path = TEMPLATES_DIR / entity_info.get("template", "")
+
+    if template_path.exists():
+        prs = Presentation(str(template_path))
+        # Remove all existing slides (keep master/layouts)
+        while len(prs.slides) > 0:
+            rId = prs.slides._sldIdLst[0].rId
+            prs.part.drop_rel(rId)
+            del prs.slides._sldIdLst[0]
+    else:
+        prs = Presentation()
+        prs.slide_width = Inches(13.333)
+        prs.slide_height = Inches(7.5)
+
+    vihat_blue = RGBColor(0x21, 0x96, 0xF3)
+    white = RGBColor(0xFF, 0xFF, 0xFF)
+    dark = RGBColor(0x33, 0x33, 0x33)
+
+    def add_text_slide(title_text, body_lines, is_title_slide=False):
+        layout = prs.slide_layouts[0 if is_title_slide else 1] if len(prs.slide_layouts) > 1 else prs.slide_layouts[0]
+        slide = prs.slides.add_slide(layout)
+
+        # Clear existing placeholders
+        for shape in slide.placeholders:
+            if shape.placeholder_format.idx == 0:  # Title
+                shape.text = title_text
+                for para in shape.text_frame.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(28 if is_title_slide else 24)
+                        run.font.bold = True
+            elif shape.placeholder_format.idx == 1:  # Body
+                shape.text = ""
+                for line in body_lines:
+                    p = shape.text_frame.add_paragraph() if shape.text_frame.paragraphs[0].text else shape.text_frame.paragraphs[0]
+                    p.text = str(line)
+                    p.font.size = Pt(14)
+                    p.space_after = Pt(6)
+
+        return slide
+
+    # Title slide
+    title = content.get("title", f"Proposal - {entity_info['label']}")
+    subtitle = content.get("subtitle", "")
+    add_text_slide(title, [subtitle] if subtitle else [], is_title_slide=True)
+
+    # Content slides
+    for section in content.get("sections", []):
+        heading = section.get("heading", "")
+        sec_type = section.get("type", "bullets")
+        sec_content = section.get("content", [])
+
+        if sec_type == "text" and isinstance(sec_content, str):
+            add_text_slide(heading, [sec_content])
+        elif sec_type == "bullets" and isinstance(sec_content, list):
+            # Split into pages if too many bullets
+            items = [str(x) for x in sec_content]
+            for i in range(0, len(items), 8):
+                chunk = items[i:i+8]
+                page_heading = heading if i == 0 else f"{heading} (tiếp)"
+                add_text_slide(page_heading, chunk)
+        elif sec_type == "table" and isinstance(sec_content, list) and len(sec_content) > 0:
+            # Create table slide
+            layout = prs.slide_layouts[5] if len(prs.slide_layouts) > 5 else prs.slide_layouts[0]
+            slide = prs.slides.add_slide(layout)
+            # Add title
+            from pptx.util import Inches as In
+            txBox = slide.shapes.add_textbox(In(0.5), In(0.3), In(12), In(0.8))
+            tf = txBox.text_frame
+            p = tf.paragraphs[0]
+            p.text = heading
+            p.font.size = Pt(24)
+            p.font.bold = True
+
+            # Add table
+            rows = len(sec_content)
+            cols = max(len(row) for row in sec_content) if sec_content else 2
+            table_shape = slide.shapes.add_table(rows, cols, In(0.5), In(1.3), In(12), In(5)).table
+
+            for r, row_data in enumerate(sec_content):
+                for c, cell_val in enumerate(row_data):
+                    if c < cols:
+                        cell = table_shape.cell(r, c)
+                        cell.text = str(cell_val)
+                        for para in cell.text_frame.paragraphs:
+                            para.font.size = Pt(11)
+                            if r == 0:
+                                para.font.bold = True
+        else:
+            # Fallback
+            lines = sec_content if isinstance(sec_content, list) else [str(sec_content)]
+            add_text_slide(heading, [str(x) for x in lines])
+
+    # Closing slide
+    add_text_slide("CẢM ƠN QUÝ KHÁCH", [
+        f"Liên hệ: {entity_info['label']}",
+        "Website: vihat.vn",
+        "Hotline: 1900 6181",
+    ], is_title_slide=True)
+
+    prs.save(str(output_path))
+
+
+def _create_docx_proposal(content: dict, output_path: Path, legal_entity: str):
+    """Create DOCX proposal from AI content."""
+    from docx import Document
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    entities = _get_legal_entities()
+    entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default", "template": ""})
+    doc = Document()
+
+    # Styles
+    style = doc.styles['Heading 1']
+    style.font.color.rgb = RGBColor(0x21, 0x96, 0xF3)
+    style.font.size = Pt(20)
+
+    style2 = doc.styles['Heading 2']
+    style2.font.color.rgb = RGBColor(0x21, 0x96, 0xF3)
+    style2.font.size = Pt(16)
+
+    # Cover page
+    title = content.get("title", "Proposal")
+    subtitle = content.get("subtitle", "")
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(f"\n\n\n\n{entity_info['label']}\n\n")
+    run.font.size = Pt(14)
+    run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(title)
+    run.font.size = Pt(28)
+    run.font.bold = True
+    run.font.color.rgb = RGBColor(0x21, 0x96, 0xF3)
+
+    if subtitle:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(subtitle)
+        run.font.size = Pt(14)
+
+    doc.add_page_break()
+
+    # Content sections
+    for section in content.get("sections", []):
+        heading = section.get("heading", "")
+        sec_type = section.get("type", "bullets")
+        sec_content = section.get("content", [])
+
+        doc.add_heading(heading, level=1)
+
+        if sec_type == "text" and isinstance(sec_content, str):
+            doc.add_paragraph(sec_content)
+        elif sec_type == "bullets" and isinstance(sec_content, list):
+            for item in sec_content:
+                doc.add_paragraph(str(item), style='List Bullet')
+        elif sec_type == "table" and isinstance(sec_content, list) and len(sec_content) > 0:
+            cols = max(len(row) for row in sec_content)
+            table = doc.add_table(rows=len(sec_content), cols=cols)
+            table.style = 'Light Grid Accent 1'
+            for r, row_data in enumerate(sec_content):
+                for c, cell_val in enumerate(row_data):
+                    if c < cols:
+                        table.cell(r, c).text = str(cell_val)
+        else:
+            lines = sec_content if isinstance(sec_content, list) else [str(sec_content)]
+            for line in lines:
+                doc.add_paragraph(str(line))
+
+        doc.add_paragraph()  # spacing
+
+    # Footer
+    doc.add_page_break()
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(f"\n\n{entity_info['label']}\nWebsite: vihat.vn | Hotline: 1900 6181")
+    run.font.size = Pt(12)
+    run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+    doc.save(str(output_path))
+
+
+async def _run_proposal_generation(task_id: str):
+    """Background worker for proposal generation."""
+    task = PROPOSAL_TASKS[task_id]
+    try:
+        # Phase 1: Generate content with AI
+        task["status"] = "generating_content"
+        content = await _generate_proposal_content(task)
+
+        # Phase 2: Create document
+        task["status"] = "creating_document"
+        safe_name = re.sub(r'[^\w\s-]', '', task["customer_name"]).strip().replace(' ', '_')
+        filename = f"proposal_{safe_name}_{task_id}.{task['output_format']}"
+        output_path = PROPOSALS_DIR / filename
+
+        if task["output_format"] == "pptx":
+            await asyncio.to_thread(_create_pptx_proposal, content, output_path, task.get("legal_entity", "omijsc"))
+        else:
+            await asyncio.to_thread(_create_docx_proposal, content, output_path, task.get("legal_entity", "omijsc"))
+
+        task["status"] = "completed"
+        task["file_path"] = str(output_path)
+        task["file_name"] = filename
+        task["completed_at"] = datetime.now().isoformat()
+        print(f"[Proposal] Task {task_id} completed: {filename}")
+
+    except Exception as e:
+        task["status"] = "error"
+        task["error"] = str(e)
+        task["completed_at"] = datetime.now().isoformat()
+        print(f"[Proposal] Task {task_id} error: {e}")
+
+
+@app.post("/api/v1/proposals/generate")
+async def generate_proposal(req: ProposalGenerateRequest):
+    """Start async proposal generation."""
+    if not req.customer_name.strip():
+        raise HTTPException(400, "Tên khách hàng là bắt buộc")
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    task_id = str(uuid.uuid4())[:8]
+    PROPOSAL_TASKS[task_id] = {
+        "task_id": task_id,
+        "status": "generating_content",
+        "customer_name": req.customer_name,
+        "industry": req.industry,
+        "products": req.products,
+        "rfi_answers": req.rfi_answers,
+        "company_info": req.company_info,
+        "legal_entity": req.legal_entity,
+        "output_format": req.output_format,
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+        "file_name": None,
+        "error": None,
+    }
+
+    asyncio.create_task(_run_proposal_generation(task_id))
+
+    return {"task_id": task_id, "status": "generating_content", "message": "Đang tạo proposal..."}
+
+
+@app.get("/api/v1/proposals/tasks")
+async def list_proposal_tasks():
+    """List all proposal tasks."""
+    tasks = sorted(PROPOSAL_TASKS.values(), key=lambda t: t.get("started_at", ""), reverse=True)
+    # Return safe subset (no file_path)
+    return [
+        {k: v for k, v in t.items() if k != "file_path"}
+        for t in tasks
+    ]
+
+
+@app.get("/api/v1/proposals/{task_id}/download")
+async def download_proposal(task_id: str):
+    """Download generated proposal file."""
+    from fastapi.responses import FileResponse
+
+    task = PROPOSAL_TASKS.get(task_id)
+    if not task:
+        raise HTTPException(404, "Task not found")
+    if task["status"] != "completed":
+        raise HTTPException(400, f"Task is {task['status']}, not ready for download")
+
+    file_path = task.get("file_path")
+    if not file_path or not Path(file_path).exists():
+        raise HTTPException(404, "File not found")
+
+    media_types = {
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+
+    return FileResponse(
+        file_path,
+        filename=task.get("file_name", f"proposal.{task['output_format']}"),
+        media_type=media_types.get(task["output_format"], "application/octet-stream"),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health")
 async def health():

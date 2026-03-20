@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 30
     RATE_LIMIT_PER_DAY: int = 500
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
