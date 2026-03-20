@@ -3034,7 +3034,7 @@ async def list_products():
         p["version_count"] = len(PRODUCT_VERSIONS.get(p["id"], []))
         # Count knowledge docs with matching tag
         p["related_docs_count"] = sum(
-            1 for d in MOCK_KNOWLEDGE_DOCS
+            1 for d in FILE_REGISTRY.values()
             if p["slug"] in (d.get("tags") or [])
         )
     return products
@@ -3051,7 +3051,7 @@ async def get_product(product_id: str):
     result = {**product}
     result["version_count"] = len(PRODUCT_VERSIONS.get(product["id"], []))
     result["related_docs_count"] = sum(
-        1 for d in MOCK_KNOWLEDGE_DOCS
+        1 for d in FILE_REGISTRY.values()
         if product["slug"] in (d.get("tags") or [])
     )
     return result
@@ -3195,7 +3195,7 @@ async def get_product_documents(product_id: str):
     product = PRODUCTS.get(product_id) or next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
     if not product:
         raise HTTPException(404, "Product not found")
-    docs = [d for d in MOCK_KNOWLEDGE_DOCS if product["slug"] in (d.get("tags") or [])]
+    docs = [d for d in FILE_REGISTRY.values() if product["slug"] in (d.get("tags") or [])]
     return docs
 
 
