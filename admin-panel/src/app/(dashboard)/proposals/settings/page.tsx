@@ -631,12 +631,25 @@ function ProductsTab() {
     setSaving(true);
     try {
       const { version_label, change_summary, ...data } = form;
+      // Auto-generate slug from name if empty
+      if (!data.slug.trim()) {
+        data.slug = data.name
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/đ/g, "d")
+          .replace(/[^a-z0-9\s-]/g, "")
+          .trim()
+          .replace(/\s+/g, "_")
+          .replace(/-+/g, "_");
+      }
       await productApi.create(data);
       toast.success("Đã tạo sản phẩm mới");
       setCreateOpen(false);
       fetchProducts();
-    } catch {
-      toast.error("Tạo sản phẩm thất bại");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Tạo sản phẩm thất bại";
+      toast.error(String(detail));
     } finally {
       setSaving(false);
     }
@@ -664,8 +677,9 @@ function ProductsTab() {
       toast.success("Đã cập nhật sản phẩm");
       closeEdit();
       fetchProducts();
-    } catch {
-      toast.error("Cập nhật thất bại");
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || "Cập nhật thất bại";
+      toast.error(String(detail));
     } finally {
       setSaving(false);
     }

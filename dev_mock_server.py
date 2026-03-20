@@ -187,13 +187,48 @@ TENANTS: dict = {
 for _u in MOCK_USERS:
     _u["tenant_id"] = DEFAULT_TENANT_ID
 
-# Rich Product data (replaces simple products_config.json)
+# Rich Product data (persisted to JSON)
 PRODUCTS: dict = {}  # product_id -> product dict
 PRODUCT_VERSIONS: dict = {}  # product_id -> [version dicts]
+PRODUCTS_JSON_PATH = Path(__file__).parent / "data" / "products.json"
+PRODUCT_VERSIONS_JSON_PATH = Path(__file__).parent / "data" / "product_versions.json"
+
+def _save_products():
+    """Persist PRODUCTS to JSON."""
+    try:
+        PRODUCTS_JSON_PATH.write_text(json.dumps(PRODUCTS, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        print(f"[Products] Save error: {e}")
+
+def _save_product_versions():
+    """Persist PRODUCT_VERSIONS to JSON."""
+    try:
+        PRODUCT_VERSIONS_JSON_PATH.write_text(json.dumps(PRODUCT_VERSIONS, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        print(f"[Products] Save versions error: {e}")
 
 def _init_products():
-    """Initialize rich product data from products_config.json seed."""
+    """Load products from JSON file, or seed from defaults if no file exists."""
     global PRODUCTS, PRODUCT_VERSIONS
+
+    # Try loading persisted data first
+    if PRODUCTS_JSON_PATH.exists():
+        try:
+            PRODUCTS = json.loads(PRODUCTS_JSON_PATH.read_text(encoding="utf-8"))
+            print(f"[Products] Loaded {len(PRODUCTS)} products from {PRODUCTS_JSON_PATH.name}")
+        except Exception as e:
+            print(f"[Products] Load error: {e}, will seed defaults")
+            PRODUCTS = {}
+
+    if PRODUCT_VERSIONS_JSON_PATH.exists():
+        try:
+            PRODUCT_VERSIONS = json.loads(PRODUCT_VERSIONS_JSON_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            PRODUCT_VERSIONS = {}
+
+    if PRODUCTS:
+        return  # Already loaded from file
+
     now = datetime.utcnow().isoformat()
 
     seed_products = [
@@ -328,6 +363,9 @@ def _init_products():
             "updated_at": now,
         }
         PRODUCT_VERSIONS[pid] = []  # no history yet for initial seed
+
+    _save_products()
+    print(f"[Products] Seeded {len(PRODUCTS)} default products")
 
 _init_products()
 
@@ -3021,9 +3059,19 @@ async def get_product(product_id: str):
 @app.post("/api/v1/products")
 async def create_product(req: ProductCreateRequest):
     """Create a new product."""
+    if not req.name.strip():
+        raise HTTPException(400, "Tên sản phẩm không được để trống")
+    # Auto-generate slug from name if empty
+    if not req.slug.strip():
+        import unicodedata
+        slug = unicodedata.normalize("NFD", req.name.lower())
+        slug = "".join(c for c in slug if not unicodedata.combining(c))
+        slug = slug.replace("đ", "d").replace(" ", "_")
+        slug = re.sub(r"[^a-z0-9_]", "", slug)
+        req.slug = slug or f"product_{uuid.uuid4().hex[:6]}"
     # Check slug uniqueness within tenant
     if any(p["slug"] == req.slug and p["tenant_id"] == DEFAULT_TENANT_ID for p in PRODUCTS.values()):
-        raise HTTPException(400, f"Product slug '{req.slug}' already exists")
+        raise HTTPException(400, f"Slug '{req.slug}' đã tồn tại. Vui lòng chọn slug khác.")
     now = datetime.utcnow().isoformat()
     pid = str(uuid.uuid4())[:8]
     PRODUCTS[pid] = {
@@ -3045,6 +3093,7 @@ async def create_product(req: ProductCreateRequest):
         "updated_at": now,
     }
     PRODUCT_VERSIONS[pid] = []
+    _save_products()
     return PRODUCTS[pid]
 
 @app.put("/api/v1/products/{product_id}")
@@ -3076,6 +3125,8 @@ async def update_product(product_id: str, req: ProductUpdateRequest):
         product["sort_order"] = req.sort_order
     product["updated_at"] = datetime.utcnow().isoformat()
 
+    _save_products()
+    _save_product_versions()
     return product
 
 @app.delete("/api/v1/products/{product_id}")
@@ -3088,6 +3139,7 @@ async def delete_product(product_id: str):
         raise HTTPException(404, "Product not found")
     product["status"] = "deprecated"
     product["updated_at"] = datetime.utcnow().isoformat()
+    _save_products()
     return {"status": "ok", "id": product["id"]}
 
 @app.get("/api/v1/products/{product_id}/versions")
