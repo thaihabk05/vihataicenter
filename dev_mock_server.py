@@ -1087,7 +1087,13 @@ async def upload_knowledge(
     if not ds_id or not DIFY_DATASET_API_KEY:
         raise HTTPException(400, f"Dataset ID not configured for '{knowledge_base}'")
 
+    # File size check — max 50MB
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
     file_content = await file.read()
+    file_size = len(file_content)
+    if file_size > MAX_FILE_SIZE:
+        raise HTTPException(413, f"File quá lớn ({file_size // (1024*1024)}MB). Giới hạn tối đa 50MB.")
+    print(f"[Upload] File size: {file_size / (1024*1024):.1f}MB")
     file_name = file.filename or title or "document"
 
     # Save original file for download
@@ -1112,10 +1118,16 @@ async def upload_knowledge(
             parts = [f"# {title or file_name}\n"]
             try:
                 with pdfplumber.open(tmp_path) as pdf:
+                    total_pages = len(pdf.pages)
+                    print(f"[Upload] PDF has {total_pages} pages, size={file_size/(1024*1024):.1f}MB")
                     for i, page in enumerate(pdf.pages):
-                        text = page.extract_text()
-                        if text and len(text.strip()) > 20:
-                            parts.append(f"## Trang {i+1}\n{text}")
+                        try:
+                            text = page.extract_text()
+                            if text and len(text.strip()) > 20:
+                                parts.append(f"## Trang {i+1}\n{text}")
+                        except Exception as pe:
+                            print(f"[Upload] PDF page {i+1} error: {pe}")
+                            continue
             finally:
                 import os; os.unlink(tmp_path)
             if len(parts) > 1:
@@ -1127,6 +1139,22 @@ async def upload_knowledge(
             preprocessed_text = await asyncio.to_thread(_process_pdf)
         except Exception as e:
             print(f"[Upload] PDF preprocess failed: {e}, uploading raw")
+    elif ext in ("txt", "md", "csv"):
+        try:
+            raw_text = file_content.decode("utf-8", errors="replace")
+            preprocessed_text = f"# {title or file_name}\n\n{raw_text}"
+            print(f"[Upload] Text file: {len(raw_text)} chars")
+        except Exception as e:
+            print(f"[Upload] Text decode error: {e}")
+
+    # For files >15MB, MUST use create_by_text (Dify has 15MB file limit)
+    DIFY_FILE_LIMIT = 15 * 1024 * 1024
+    if file_size > DIFY_FILE_LIMIT and not preprocessed_text:
+        raise HTTPException(
+            413,
+            f"File {file_size/(1024*1024):.0f}MB vượt giới hạn Dify (15MB) và không thể trích xuất nội dung text. "
+            f"Vui lòng chia nhỏ file hoặc dùng định dạng khác (DOCX, XLSX, TXT)."
+        )
 
     chunk_config = {
         "indexing_technique": "high_quality",

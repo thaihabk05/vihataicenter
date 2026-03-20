@@ -109,39 +109,44 @@ function ProductTagSelector({
   selected: string[];
   onChange: (tags: string[]) => void;
 }) {
-  if (products.length === 0) return null;
   return (
     <div className="grid gap-2">
       <Label className="flex items-center gap-1.5">
         <Package className="size-3.5" />
-        S&#7843;n ph&#7849;m li&#234;n quan
+        Sản phẩm liên quan
       </Label>
-      <div className="flex flex-wrap gap-1.5">
-        {products.map((p) => {
-          const isSelected = selected.includes(p.slug);
-          return (
-            <Badge
-              key={p.slug}
-              variant={isSelected ? "default" : "outline"}
-              className={`cursor-pointer transition-colors ${
-                isSelected ? "bg-blue-600 hover:bg-blue-700" : "hover:bg-muted"
-              }`}
-              onClick={() =>
-                onChange(
-                  isSelected
-                    ? selected.filter((s) => s !== p.slug)
-                    : [...selected, p.slug]
-                )
-              }
-            >
-              {p.name}
-              {isSelected && <X className="size-3 ml-1" />}
-            </Badge>
-          );
-        })}
-      </div>
+      {products.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {products.map((p) => {
+            const isSelected = selected.includes(p.slug);
+            return (
+              <Badge
+                key={p.slug}
+                variant={isSelected ? "default" : "outline"}
+                className={`cursor-pointer transition-colors ${
+                  isSelected ? "bg-blue-600 hover:bg-blue-700" : "hover:bg-muted"
+                }`}
+                onClick={() =>
+                  onChange(
+                    isSelected
+                      ? selected.filter((s) => s !== p.slug)
+                      : [...selected, p.slug]
+                  )
+                }
+              >
+                {p.name}
+                {isSelected && <X className="size-3 ml-1" />}
+              </Badge>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">
+          Chưa có sản phẩm nào. Vui lòng tạo sản phẩm trong trang Proposals &gt; Cài đặt.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
-        Ch&#7885;n s&#7843;n ph&#7849;m &#273;&#7875; AI tham kh&#7843;o t&#224;i li&#7879;u n&#224;y khi t&#7841;o proposal
+        Chọn sản phẩm để AI tham khảo tài liệu này khi tạo proposal
       </p>
     </div>
   );
@@ -1132,7 +1137,13 @@ export default function KnowledgePage() {
     fetchDocs();
     fetchImportTasks();
     fetchSources();
-    productApi.list().then((res) => setProducts(res.data ?? [])).catch(() => {});
+    productApi.list().then((res) => {
+      const data = res.data ?? [];
+      console.log(`[Knowledge] Loaded ${data.length} products`);
+      setProducts(data);
+    }).catch((err) => {
+      console.error("[Knowledge] Failed to load products:", err?.message);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
