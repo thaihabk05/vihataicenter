@@ -2810,6 +2810,29 @@ PRODUCTS_CONFIG_PATH = Path(__file__).parent / "data" / "products_config.json"
 RFI_TEMPLATES_PATH = Path(__file__).parent / "data" / "rfi_templates.json"
 
 PROPOSAL_TASKS: dict = {}  # task_id -> task info
+PROPOSAL_TASKS_PATH = Path(__file__).parent / "data" / "proposal_tasks.json"
+
+def _load_proposal_tasks():
+    """Load proposal tasks from JSON file."""
+    global PROPOSAL_TASKS
+    if PROPOSAL_TASKS_PATH.exists():
+        try:
+            PROPOSAL_TASKS = json.loads(PROPOSAL_TASKS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            PROPOSAL_TASKS = {}
+
+def _save_proposal_tasks():
+    """Persist proposal tasks to JSON file."""
+    try:
+        # Only save a safe subset (no rfi_answers/company_info to save space)
+        safe = {}
+        for tid, t in PROPOSAL_TASKS.items():
+            safe[tid] = {k: v for k, v in t.items() if k not in ("rfi_answers", "company_info")}
+        PROPOSAL_TASKS_PATH.write_text(json.dumps(safe, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        print(f"[Proposal] Save tasks error: {e}")
+
+_load_proposal_tasks()
 
 def _get_legal_entities() -> list:
     """Get legal entities from current tenant config."""
@@ -3340,49 +3363,68 @@ async def _generate_proposal_content(task: dict) -> dict:
     tenant = TENANTS.get(DEFAULT_TENANT_ID, {})
     company_name = tenant.get("name", "ViHAT Group")
 
-    prompt = f"""Bạn là chuyên gia tư vấn giải pháp của {company_name}. Tạo nội dung proposal cho khách hàng.
+    prompt = f"""Bạn là chuyên gia tư vấn giải pháp CPaaS & Contact Center tại {company_name}. Hãy tạo nội dung PROPOSAL CHI TIẾT và CHUYÊN NGHIỆP cho khách hàng.
 
 THÔNG TIN KHÁCH HÀNG:
-- Tên: {task['customer_name']}
-- Ngành: {task['industry']}
-- Thông tin DN: {company_text}
+- Tên công ty: {task['customer_name']}
+- Ngành nghề: {task['industry']}
+- Thông tin doanh nghiệp: {company_text}
 
-RFI (Thông tin khảo sát):
-{rfi_text}
+RFI (Thông tin khảo sát nhu cầu):
+{rfi_text if rfi_text.strip() else 'Chưa có thông tin RFI cụ thể'}
 
 === THÔNG TIN CHI TIẾT SẢN PHẨM ĐƯỢC CHỌN ===
-{products_detail if products_detail.strip() else 'Chưa chọn sản phẩm cụ thể'}
+{products_detail if products_detail.strip() else 'Chưa chọn sản phẩm cụ thể - hãy đề xuất giải pháp phù hợp nhất'}
 
 === TẤT CẢ SẢN PHẨM CÓ THỂ ĐỀ XUẤT ===
 {all_products_brief}
 
-YÊU CẦU:
-1. Phân tích nhu cầu khách hàng từ RFI
-2. Đề xuất giải pháp phù hợp từ sản phẩm đã chọn, có thể gợi ý thêm sản phẩm khác nếu phù hợp
-3. Tạo nội dung proposal có cấu trúc, chi tiết về tính năng và lợi ích cụ thể
+YÊU CẦU QUAN TRỌNG:
+1. Viết NỘI DUNG CHI TIẾT, CHUYÊN SÂU cho từng section (KHÔNG viết sơ sài)
+2. Mỗi bullet point phải có giải thích cụ thể (2-3 câu), KHÔNG chỉ liệt kê tên tính năng
+3. Phân tích nhu cầu cụ thể của khách hàng dựa trên ngành nghề và RFI
+4. Đề xuất giải pháp với lý do tại sao phù hợp với khách hàng
+5. Bảng giá/gói dịch vụ phải có chi tiết từng hạng mục
+6. Lộ trình triển khai phải có timeline cụ thể (tuần/tháng)
 
-Trả về JSON:
+Trả về JSON với format:
 {{
-  "title": "Tiêu đề proposal",
-  "subtitle": "Phụ đề",
+  "title": "ĐỀ XUẤT GIẢI PHÁP [tên giải pháp chính]",
+  "subtitle": "Dành cho {task['customer_name']} - [mô tả ngắn giải pháp]",
   "sections": [
     {{
-      "heading": "Tên section",
-      "type": "bullets|text|table",
-      "content": ["dòng 1", "dòng 2"] hoặc "đoạn văn" hoặc [["Header1","Header2"],["row1col1","row1col2"]]
+      "heading": "Tên section (IN HOA)",
+      "type": "bullets" hoặc "text" hoặc "table" hoặc "two_column",
+      "content": [nội dung tương ứng]
     }}
   ]
 }}
 
-Các section nên bao gồm (tùy chỉnh theo case):
-- Tổng quan nhu cầu khách hàng
-- Giải pháp đề xuất
-- Chi tiết tính năng sản phẩm
-- Lợi ích khi triển khai
-- Lộ trình triển khai
-- Bảng giá/gói dịch vụ (nếu phù hợp)
+CẤU TRÚC BẮT BUỘC các sections (phải có ĐẦY ĐỦ):
 
-Viết bằng tiếng Việt, chuyên nghiệp. Chỉ trả JSON."""
+1. "PHÂN TÍCH NHU CẦU KHÁCH HÀNG" (type: "bullets") — 5-7 bullets, mỗi bullet 2-3 câu phân tích nhu cầu cụ thể
+
+2. "GIẢI PHÁP ĐỀ XUẤT" (type: "text") — đoạn văn 4-6 câu tổng quan giải pháp, tại sao phù hợp
+
+3. Với MỖI sản phẩm đề xuất, tạo 1 section riêng:
+   "[TÊN SẢN PHẨM] - TÍNH NĂNG NỔI BẬT" (type: "bullets") — 6-10 tính năng, mỗi cái kèm mô tả ngắn
+
+4. "KIẾN TRÚC GIẢI PHÁP & TÍCH HỢP" (type: "bullets") — mô tả cách các sản phẩm kết nối, tích hợp CRM/ERP
+
+5. "LỢI ÍCH KHI TRIỂN KHAI" (type: "two_column") — cột trái: lợi ích vận hành, cột phải: lợi ích kinh doanh
+   Format two_column: {{"left_title": "...", "left_items": [...], "right_title": "...", "right_items": [...]}}
+
+6. "LỘ TRÌNH TRIỂN KHAI" (type: "table") — bảng có cột [Giai đoạn, Thời gian, Nội dung, Kết quả]
+   Chia thành 3-4 giai đoạn rõ ràng với timeline cụ thể
+
+7. "GÓI DỊCH VỤ & BÁO GIÁ THAM KHẢO" (type: "table") — bảng [Hạng mục, Mô tả, Đơn giá, Ghi chú]
+   Liệt kê chi tiết từng hạng mục: license, setup, training, support
+
+8. "TẠI SAO CHỌN {company_name.upper()}" (type: "bullets") — 5-6 lý do cạnh tranh
+
+9. "BƯỚC TIẾP THEO" (type: "bullets") — 3-4 bước cụ thể để bắt đầu triển khai
+
+QUAN TRỌNG: Viết bằng tiếng Việt, chuyên nghiệp, chi tiết. Chỉ trả về JSON, không thêm text khác."""
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
@@ -3394,7 +3436,7 @@ Viết bằng tiếng Việt, chuyên nghiệp. Chỉ trả JSON."""
             },
             json={
                 "model": "claude-sonnet-4-20250514",
-                "max_tokens": 4000,
+                "max_tokens": 8000,
                 "messages": [{"role": "user", "content": prompt}],
             },
         )
@@ -3411,115 +3453,334 @@ Viết bằng tiếng Việt, chuyên nghiệp. Chỉ trả JSON."""
 
 
 def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
-    """Create PPTX proposal from AI content + template."""
+    """Create PPTX proposal from AI content, keeping template slides for branding."""
     from pptx import Presentation
     from pptx.util import Inches, Pt, Emu
     from pptx.dml.color import RGBColor
     from pptx.enum.text import PP_ALIGN
 
-    # Try loading template
     entities = _get_legal_entities()
     entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default", "template": ""})
     template_path = TEMPLATES_DIR / entity_info.get("template", "")
 
+    vihat_blue = RGBColor(0x21, 0x96, 0xF3)
+    dark = RGBColor(0x33, 0x33, 0x33)
+    white = RGBColor(0xFF, 0xFF, 0xFF)
+
     if template_path.exists():
         prs = Presentation(str(template_path))
-        # Remove all existing slides (keep master/layouts)
-        while len(prs.slides) > 0:
-            rId = prs.slides._sldIdLst[0].rId
-            prs.part.drop_rel(rId)
-            del prs.slides._sldIdLst[0]
+        # KEEP template slides (branding, company intro, etc.)
+        # Just customize the cover subtitle if possible
+        template_slide_count = len(prs.slides)
+        customer_name = content.get("subtitle", "")
+
+        # Try to customize cover slide (slide 0) with customer name
+        if template_slide_count > 0:
+            cover = prs.slides[0]
+            for shape in cover.shapes:
+                if shape.has_text_frame:
+                    text = shape.text_frame.text.strip()
+                    # Find subtitle-like text on cover and append customer info
+                    if "nâng cao trải nghiệm" in text.lower() or "cung cấp" in text.lower():
+                        # Keep original, add customer name below
+                        pass
+
+        print(f"[Proposal] Keeping {template_slide_count} template slides, adding content slides after")
     else:
         prs = Presentation()
         prs.slide_width = Inches(13.333)
         prs.slide_height = Inches(7.5)
+        template_slide_count = 0
 
-    vihat_blue = RGBColor(0x21, 0x96, 0xF3)
-    white = RGBColor(0xFF, 0xFF, 0xFF)
-    dark = RGBColor(0x33, 0x33, 0x33)
+    # Determine slide dimensions
+    slide_w = prs.slide_width
+    slide_h = prs.slide_height
+    w_inches = slide_w / 914400  # EMU to inches
+    h_inches = slide_h / 914400
 
-    def add_text_slide(title_text, body_lines, is_title_slide=False):
-        layout = prs.slide_layouts[0 if is_title_slide else 1] if len(prs.slide_layouts) > 1 else prs.slide_layouts[0]
+    # Helper: Get best layout for content
+    def get_layout(layout_name):
+        """Find layout by name, fallback to BLANK."""
+        for sl in prs.slide_layouts:
+            if sl.name.upper() == layout_name.upper():
+                return sl
+        # Fallback: try TITLE_AND_BODY or BLANK
+        for sl in prs.slide_layouts:
+            if "BODY" in sl.name.upper() or "TEXT" in sl.name.upper():
+                return sl
+        return prs.slide_layouts[-1]  # BLANK
+
+    def add_section_header(title_text):
+        """Add a section header slide (big title, no body)."""
+        layout = get_layout("SECTION_HEADER")
         slide = prs.slides.add_slide(layout)
-
-        # Clear existing placeholders
         for shape in slide.placeholders:
-            if shape.placeholder_format.idx == 0:  # Title
+            if shape.placeholder_format.idx == 0:
                 shape.text = title_text
                 for para in shape.text_frame.paragraphs:
                     for run in para.runs:
-                        run.font.size = Pt(28 if is_title_slide else 24)
+                        run.font.size = Pt(32)
                         run.font.bold = True
-            elif shape.placeholder_format.idx == 1:  # Body
+                        run.font.color.rgb = vihat_blue
+        return slide
+
+    def add_content_slide(title_text, body_lines, bullet_style=True):
+        """Add a slide with title + body text (bullets or paragraph)."""
+        layout = get_layout("TITLE_AND_BODY")
+        slide = prs.slides.add_slide(layout)
+
+        title_set = False
+        body_set = False
+        for shape in slide.placeholders:
+            if shape.placeholder_format.idx == 0 and not title_set:
+                shape.text = title_text
+                for para in shape.text_frame.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(24)
+                        run.font.bold = True
+                        run.font.color.rgb = vihat_blue
+                title_set = True
+            elif shape.placeholder_format.idx == 1 and not body_set:
                 shape.text = ""
-                for line in body_lines:
-                    p = shape.text_frame.add_paragraph() if shape.text_frame.paragraphs[0].text else shape.text_frame.paragraphs[0]
+                tf = shape.text_frame
+                tf.word_wrap = True
+                for i, line in enumerate(body_lines):
+                    if i == 0:
+                        p = tf.paragraphs[0]
+                    else:
+                        p = tf.add_paragraph()
                     p.text = str(line)
-                    p.font.size = Pt(14)
-                    p.space_after = Pt(6)
+                    p.font.size = Pt(13)
+                    p.space_after = Pt(4)
+                    if bullet_style:
+                        p.level = 0
+                body_set = True
+
+        # If no placeholders found, use textbox fallback
+        if not title_set:
+            from pptx.util import Inches as In
+            txBox = slide.shapes.add_textbox(In(0.5), In(0.2), In(w_inches - 1), In(0.8))
+            p = txBox.text_frame.paragraphs[0]
+            p.text = title_text
+            p.font.size = Pt(24)
+            p.font.bold = True
+            p.font.color.rgb = vihat_blue
+
+        if not body_set and body_lines:
+            from pptx.util import Inches as In
+            txBox = slide.shapes.add_textbox(In(0.5), In(1.2), In(w_inches - 1), In(h_inches - 1.8))
+            tf = txBox.text_frame
+            tf.word_wrap = True
+            for i, line in enumerate(body_lines):
+                p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                p.text = str(line)
+                p.font.size = Pt(13)
+                p.space_after = Pt(4)
 
         return slide
 
-    # Title slide
-    title = content.get("title", f"Proposal - {entity_info['label']}")
-    subtitle = content.get("subtitle", "")
-    add_text_slide(title, [subtitle] if subtitle else [], is_title_slide=True)
+    def add_table_slide(title_text, table_data):
+        """Add a slide with title + table."""
+        from pptx.util import Inches as In
 
-    # Content slides
+        layout = get_layout("BLANK")
+        slide = prs.slides.add_slide(layout)
+
+        # Title
+        txBox = slide.shapes.add_textbox(In(0.5), In(0.2), In(w_inches - 1), In(0.8))
+        p = txBox.text_frame.paragraphs[0]
+        p.text = title_text
+        p.font.size = Pt(24)
+        p.font.bold = True
+        p.font.color.rgb = vihat_blue
+
+        # Table
+        if not table_data:
+            return slide
+        rows = len(table_data)
+        cols = max(len(row) for row in table_data) if table_data else 2
+        # Calculate table dimensions
+        table_w = w_inches - 1.0
+        table_h = min(h_inches - 1.8, rows * 0.5)
+        table_shape = slide.shapes.add_table(rows, cols, In(0.5), In(1.2), In(table_w), In(table_h)).table
+
+        for r, row_data in enumerate(table_data):
+            for c, cell_val in enumerate(row_data):
+                if c < cols:
+                    cell = table_shape.cell(r, c)
+                    cell.text = str(cell_val)
+                    for para in cell.text_frame.paragraphs:
+                        para.font.size = Pt(11)
+                        if r == 0:
+                            para.font.bold = True
+                            para.font.color.rgb = white
+                    # Header row styling
+                    if r == 0:
+                        from pptx.oxml.ns import qn
+                        tc = cell._tc
+                        tcPr = tc.get_or_add_tcPr()
+                        solidFill = tcPr.makeelement(qn('a:solidFill'), {})
+                        srgbClr = solidFill.makeelement(qn('a:srgbClr'), {'val': '2196F3'})
+                        solidFill.append(srgbClr)
+                        tcPr.append(solidFill)
+
+        return slide
+
+    def add_two_column_slide(title_text, col_data):
+        """Add a two-column layout slide."""
+        from pptx.util import Inches as In
+
+        layout = get_layout("TITLE_AND_TWO_COLUMNS")
+        slide = prs.slides.add_slide(layout)
+
+        # Try to use placeholders
+        ph_filled = set()
+        for shape in slide.placeholders:
+            idx = shape.placeholder_format.idx
+            if idx == 0:
+                shape.text = title_text
+                for para in shape.text_frame.paragraphs:
+                    for run in para.runs:
+                        run.font.size = Pt(24)
+                        run.font.bold = True
+                        run.font.color.rgb = vihat_blue
+                ph_filled.add(0)
+            elif idx == 1:
+                # Left column
+                shape.text = ""
+                tf = shape.text_frame
+                lt = col_data.get("left_title", "")
+                if lt:
+                    p = tf.paragraphs[0]
+                    p.text = lt
+                    p.font.size = Pt(14)
+                    p.font.bold = True
+                for item in col_data.get("left_items", []):
+                    p = tf.add_paragraph()
+                    p.text = f"• {item}"
+                    p.font.size = Pt(12)
+                    p.space_after = Pt(3)
+                ph_filled.add(1)
+            elif idx == 2:
+                # Right column
+                shape.text = ""
+                tf = shape.text_frame
+                rt = col_data.get("right_title", "")
+                if rt:
+                    p = tf.paragraphs[0]
+                    p.text = rt
+                    p.font.size = Pt(14)
+                    p.font.bold = True
+                for item in col_data.get("right_items", []):
+                    p = tf.add_paragraph()
+                    p.text = f"• {item}"
+                    p.font.size = Pt(12)
+                    p.space_after = Pt(3)
+                ph_filled.add(2)
+
+        # Fallback: use textboxes if placeholders not available
+        if 0 not in ph_filled:
+            txBox = slide.shapes.add_textbox(In(0.5), In(0.2), In(w_inches - 1), In(0.8))
+            p = txBox.text_frame.paragraphs[0]
+            p.text = title_text
+            p.font.size = Pt(24)
+            p.font.bold = True
+        if 1 not in ph_filled:
+            col_w = (w_inches - 1.5) / 2
+            # Left column
+            txBox = slide.shapes.add_textbox(In(0.5), In(1.2), In(col_w), In(h_inches - 2))
+            tf = txBox.text_frame
+            tf.word_wrap = True
+            lt = col_data.get("left_title", "")
+            if lt:
+                tf.paragraphs[0].text = lt
+                tf.paragraphs[0].font.size = Pt(14)
+                tf.paragraphs[0].font.bold = True
+            for item in col_data.get("left_items", []):
+                p = tf.add_paragraph()
+                p.text = f"• {item}"
+                p.font.size = Pt(12)
+        if 2 not in ph_filled:
+            col_w = (w_inches - 1.5) / 2
+            txBox = slide.shapes.add_textbox(In(0.5 + col_w + 0.5), In(1.2), In(col_w), In(h_inches - 2))
+            tf = txBox.text_frame
+            tf.word_wrap = True
+            rt = col_data.get("right_title", "")
+            if rt:
+                tf.paragraphs[0].text = rt
+                tf.paragraphs[0].font.size = Pt(14)
+                tf.paragraphs[0].font.bold = True
+            for item in col_data.get("right_items", []):
+                p = tf.add_paragraph()
+                p.text = f"• {item}"
+                p.font.size = Pt(12)
+
+        return slide
+
+    # ====== ADD A DIVIDER SLIDE before custom content ======
+    if template_slide_count > 0:
+        # Add section header to transition from template to custom content
+        add_section_header(f"ĐỀ XUẤT GIẢI PHÁP CHO {content.get('subtitle', '').split('-')[0].strip().upper() if '-' in content.get('subtitle', '') else content.get('title', 'KHÁCH HÀNG').upper()}")
+
+    # ====== CONTENT SLIDES FROM AI ======
     for section in content.get("sections", []):
         heading = section.get("heading", "")
         sec_type = section.get("type", "bullets")
         sec_content = section.get("content", [])
 
         if sec_type == "text" and isinstance(sec_content, str):
-            add_text_slide(heading, [sec_content])
+            # Long text: split into chunks for readability
+            paragraphs = sec_content.split("\n")
+            add_content_slide(heading, paragraphs, bullet_style=False)
+
         elif sec_type == "bullets" and isinstance(sec_content, list):
-            # Split into pages if too many bullets
             items = [str(x) for x in sec_content]
-            for i in range(0, len(items), 8):
-                chunk = items[i:i+8]
+            # Split into pages of 6 items each
+            for i in range(0, len(items), 6):
+                chunk = items[i:i+6]
                 page_heading = heading if i == 0 else f"{heading} (tiếp)"
-                add_text_slide(page_heading, chunk)
+                add_content_slide(page_heading, [f"• {item}" for item in chunk])
+
         elif sec_type == "table" and isinstance(sec_content, list) and len(sec_content) > 0:
-            # Create table slide
-            layout = prs.slide_layouts[5] if len(prs.slide_layouts) > 5 else prs.slide_layouts[0]
-            slide = prs.slides.add_slide(layout)
-            # Add title
-            from pptx.util import Inches as In
-            txBox = slide.shapes.add_textbox(In(0.5), In(0.3), In(12), In(0.8))
-            tf = txBox.text_frame
-            p = tf.paragraphs[0]
-            p.text = heading
-            p.font.size = Pt(24)
-            p.font.bold = True
+            # Split large tables across multiple slides
+            header = sec_content[0] if sec_content else []
+            data_rows = sec_content[1:] if len(sec_content) > 1 else []
+            for i in range(0, max(len(data_rows), 1), 8):
+                chunk = [header] + data_rows[i:i+8]
+                page_heading = heading if i == 0 else f"{heading} (tiếp)"
+                add_table_slide(page_heading, chunk)
 
-            # Add table
-            rows = len(sec_content)
-            cols = max(len(row) for row in sec_content) if sec_content else 2
-            table_shape = slide.shapes.add_table(rows, cols, In(0.5), In(1.3), In(12), In(5)).table
+        elif sec_type == "two_column" and isinstance(sec_content, dict):
+            add_two_column_slide(heading, sec_content)
 
-            for r, row_data in enumerate(sec_content):
-                for c, cell_val in enumerate(row_data):
-                    if c < cols:
-                        cell = table_shape.cell(r, c)
-                        cell.text = str(cell_val)
-                        for para in cell.text_frame.paragraphs:
-                            para.font.size = Pt(11)
-                            if r == 0:
-                                para.font.bold = True
         else:
             # Fallback
-            lines = sec_content if isinstance(sec_content, list) else [str(sec_content)]
-            add_text_slide(heading, [str(x) for x in lines])
+            if isinstance(sec_content, list):
+                add_content_slide(heading, [str(x) for x in sec_content])
+            elif isinstance(sec_content, str):
+                add_content_slide(heading, [sec_content], bullet_style=False)
+            else:
+                add_content_slide(heading, [str(sec_content)])
 
-    # Closing slide
-    add_text_slide("CẢM ƠN QUÝ KHÁCH", [
-        f"Liên hệ: {entity_info['label']}",
-        "Website: vihat.vn",
-        "Hotline: 1900 6181",
-    ], is_title_slide=True)
+    # ====== CLOSING SLIDE ======
+    layout = get_layout("TITLE")
+    slide = prs.slides.add_slide(layout)
+    for shape in slide.placeholders:
+        if shape.placeholder_format.idx == 0:
+            shape.text = "CẢM ƠN QUÝ KHÁCH"
+            for para in shape.text_frame.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(36)
+                    run.font.bold = True
+                    run.font.color.rgb = vihat_blue
+        elif shape.placeholder_format.idx == 1:
+            shape.text = f"Liên hệ: {entity_info['label']}\nWebsite: vihat.vn | Hotline: 1900 6181\nEmail: info@vihat.vn"
+            for para in shape.text_frame.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(16)
 
     prs.save(str(output_path))
+    print(f"[Proposal] PPTX created: {template_slide_count} template + {len(prs.slides) - template_slide_count} content slides")
 
 
 def _create_docx_proposal(content: dict, output_path: Path, legal_entity: str):
@@ -3628,12 +3889,14 @@ async def _run_proposal_generation(task_id: str):
         task["file_path"] = str(output_path)
         task["file_name"] = filename
         task["completed_at"] = datetime.now().isoformat()
+        _save_proposal_tasks()
         print(f"[Proposal] Task {task_id} completed: {filename}")
 
     except Exception as e:
         task["status"] = "error"
         task["error"] = str(e)
         task["completed_at"] = datetime.now().isoformat()
+        _save_proposal_tasks()
         print(f"[Proposal] Task {task_id} error: {e}")
 
 
@@ -3662,6 +3925,7 @@ async def generate_proposal(req: ProposalGenerateRequest):
         "error": None,
     }
 
+    _save_proposal_tasks()
     asyncio.create_task(_run_proposal_generation(task_id))
 
     return {"task_id": task_id, "status": "generating_content", "message": "Đang tạo proposal..."}
