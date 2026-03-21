@@ -30,7 +30,7 @@ try {
   console.error("Failed to load themes.json:", e.message);
 }
 
-const F = { h: "Arial Black", b: "Arial" };
+let F = { h: "Arial Black", b: "Arial" }; // May be overridden by font_override in input
 const SW = 10, SH = 5.625;
 const shadow = () => ({ type: "outer", blur: 6, offset: 2, angle: 135, color: "000000", opacity: 0.15 });
 
@@ -776,6 +776,13 @@ async function main() {
   const baseTheme = THEMES[entityId] || THEMES.default;
   const customTheme = customThemes[entityId] || {};
   const T = { ...baseTheme, ...customTheme };
+
+  // Apply font override from template extraction (if provided)
+  if (data.font_override) {
+    if (data.font_override.h) F = { ...F, h: data.font_override.h };
+    if (data.font_override.b) F = { ...F, b: data.font_override.b };
+    console.log(`Font override: h="${F.h}", b="${F.b}"`);
+  }
 
   const pres = new pptxgen();
   pres.layout = "LAYOUT_16x9";

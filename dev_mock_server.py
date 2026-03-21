@@ -4538,288 +4538,75 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
 
 
 def _create_pptx_template_based(content: dict, output_path: Path, legal_entity: str):
-    """Create PPTX using template layouts + visual shapes with template fonts."""
-    from pptx import Presentation as PptxPres
-    from pptx.util import Inches, Pt, Emu
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
-    from lxml import etree
+    """Create PPTX using pptxgenjs with template-extracted fonts and colors.
 
-    # Find template file
+    This uses the same pptxgenjs engine as the 'design' method but overrides
+    fonts to match the uploaded template (e.g., Be Vietnam Pro instead of Arial).
+    """
+    import subprocess, tempfile
+
+    # Extract fonts from template PPTX
     template_path = TEMPLATES_DIR / f"proposal_{legal_entity}.pptx"
     if not template_path.exists():
         templates = list(TEMPLATES_DIR.glob("proposal_*.pptx"))
         template_path = templates[0] if templates else None
-    if not template_path or not template_path.exists():
-        raise RuntimeError(f"No template found for {legal_entity}")
 
-    prs = PptxPres(str(template_path))
+    template_fonts = {"h": "Be Vietnam Pro ExtraBold", "b": "Be Vietnam Pro"}
+    if template_path and template_path.exists():
+        try:
+            from pptx import Presentation as PptxPres
+            tprs = PptxPres(str(template_path))
+            for slide in tprs.slides:
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for p in shape.text_frame.paragraphs:
+                            for r in p.runs:
+                                n = r.font.name or ""
+                                if "extrabold" in n.lower() or "black" in n.lower():
+                                    template_fonts["h"] = n
+                                elif n and "time" not in n.lower() and "symbol" not in n.lower():
+                                    template_fonts["b"] = n
+        except Exception as e:
+            print(f"[Proposal] Font extraction error: {e}")
 
-    # Map layout names
-    layouts = {}
-    for layout in prs.slide_layouts:
-        layouts[layout.name] = layout
+    entities = _get_legal_entities()
+    entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default"})
 
-    # Remove all existing template slides properly
-    for _ in range(len(prs.slides)):
-        rId = prs.slides._sldIdLst[0].attrib.get(
-            '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id', ''
-        )
-        if rId:
-            try:
-                prs.part.drop_rel(rId)
-            except Exception:
-                pass
-        prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
-
-    # Extract fonts from template
-    template_fonts = {"h": "Be Vietnam Pro ExtraBold", "b": "Be Vietnam Pro", "light": "Be Vietnam Pro Light"}
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                for p in shape.text_frame.paragraphs:
-                    for r in p.runs:
-                        n = r.font.name or ""
-                        if "extrabold" in n.lower():
-                            template_fonts["h"] = n
-                        elif "semibold" in n.lower():
-                            template_fonts["semi"] = n
-                        elif "light" in n.lower():
-                            template_fonts["light"] = n
-                        elif n and "time" not in n.lower():
-                            template_fonts["b"] = n
-
-    # Get theme colors
-    theme = CUSTOM_THEMES.get(legal_entity, {})
-    T = {
-        "primary": theme.get("primary", "2AB8FC"),
-        "primaryDark": theme.get("primaryDark", "324A6F"),
-        "accent": theme.get("accent", "0C506F"),
-        "highlight": theme.get("highlight", "E67E22"),
-        "success": theme.get("success", "28A745"),
-        "danger": theme.get("danger", "E74C3C"),
-        "teal": theme.get("teal", "17A2B8"),
+    # Build pptxgenjs input with template font override
+    pptx_data = {
+        "customer_name": content.get("customer_name", content.get("subtitle", "")),
+        "legal_entity_id": legal_entity,
+        "legal_entity_label": entity_info.get("label", "ViHAT Group"),
+        "cover_title": content.get("cover_title", content.get("title", "GIẢI PHÁP")),
+        "cover_subtitle": content.get("cover_subtitle", ""),
+        "sections": content.get("sections", []),
+        # Override fonts from template
+        "font_override": {
+            "h": template_fonts["h"],
+            "b": template_fonts["b"],
+        },
     }
 
-    def hex_rgb(c):
-        return RGBColor(int(c[:2], 16), int(c[2:4], 16), int(c[4:6], 16))
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+        json.dump(pptx_data, f, ensure_ascii=False)
+        json_path = f.name
 
-    def get_layout(preferred, *fallbacks):
-        for name in [preferred] + list(fallbacks):
-            if name in layouts:
-                return layouts[name]
-        return layouts.get("BLANK", list(layouts.values())[0])
-
-    def set_ph(slide, idx, text, font_name=None, font_size=None, bold=None, color=None, align=None):
-        for ph in slide.placeholders:
-            if ph.placeholder_format.idx == idx:
-                tf = ph.text_frame
-                tf.clear()
-                p = tf.paragraphs[0]
-                run = p.add_run()
-                run.text = str(text)
-                if font_name:
-                    run.font.name = font_name
-                if font_size:
-                    run.font.size = Pt(font_size)
-                if bold is not None:
-                    run.font.bold = bold
-                if color:
-                    run.font.color.rgb = hex_rgb(color)
-                if align:
-                    p.alignment = align
-                return ph
-        return None
-
-    def set_ph_formatted(slide, idx, items, font_name=None, font_size=10):
-        """Set placeholder with bullet items, each with optional bold title."""
-        for ph in slide.placeholders:
-            if ph.placeholder_format.idx == idx:
-                tf = ph.text_frame
-                tf.clear()
-                fn = font_name or template_fonts["b"]
-                for i, item in enumerate(items):
-                    if isinstance(item, dict):
-                        title = item.get("title", item.get("name", ""))
-                        desc = item.get("description", item.get("body", ""))
-                    else:
-                        title = str(item)
-                        desc = ""
-                    p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-                    p.space_after = Pt(6)
-                    if title:
-                        r = p.add_run()
-                        r.text = f"• {title}"
-                        r.font.name = template_fonts.get("semi", fn)
-                        r.font.size = Pt(font_size)
-                        r.font.bold = True
-                    if desc:
-                        r2 = p.add_run()
-                        r2.text = f"\n  {desc}"
-                        r2.font.name = fn
-                        r2.font.size = Pt(font_size - 1)
-                return ph
-        return None
-
-    sections = content.get("sections", [])
-    customer = content.get("customer_name", content.get("subtitle", ""))
-    FH = template_fonts["h"]
-    FB = template_fonts["b"]
-    FL = template_fonts.get("light", FB)
-
-    # ── Slide 1: Cover ──
-    cover = prs.slides.add_slide(get_layout("TITLE"))
-    cover_title = content.get("cover_title", content.get("title", "GIẢI PHÁP"))
-    cover_subtitle = content.get("cover_subtitle", customer)
-    set_ph(cover, 0, cover_title, font_name=FH, bold=True)
-    set_ph(cover, 1, cover_subtitle, font_name=FB)
-
-    # ── Process sections ──
-    for sec in sections:
-        sec_title = sec.get("title", "")
-        sec_type = sec.get("type", "text")
-        sec_content = sec.get("content", "")
-
-        if sec_type == "exec_summary":
-            # 3-column: Problem → Solution → Results using TWO_COLUMNS + body
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            if isinstance(sec_content, dict):
-                problems = sec_content.get("problem", sec_content.get("problems", []))
-                solutions = sec_content.get("solution", sec_content.get("solutions", []))
-                results = sec_content.get("results", sec_content.get("expected_results", []))
-                rec = sec_content.get("recommendation", "")
-                # Left: Problems + Solutions
-                left_items = [{"title": "VẤN ĐỀ", "description": ""}] + [{"title": p} for p in problems[:3]]
-                left_items += [{"title": "GIẢI PHÁP", "description": ""}] + [{"title": s} for s in solutions[:3]]
-                set_ph_formatted(slide, 1, left_items, font_size=9)
-                # Right: Results + Recommendation
-                right_items = [{"title": "KẾT QUẢ KỲ VỌNG", "description": ""}] + [{"title": r} for r in results[:3]]
-                if rec:
-                    right_items.append({"title": f"→ {rec}"})
-                set_ph_formatted(slide, 2, right_items, font_size=9)
-            else:
-                set_ph(slide, 1, str(sec_content), font_name=FB)
-
-        elif sec_type == "stats":
-            slide = prs.slides.add_slide(get_layout("BIG_NUMBER", "TITLE_AND_BODY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            stats = sec_content if isinstance(sec_content, list) else []
-            body_parts = []
-            for st in stats[:4]:
-                val = st.get("value", "") if isinstance(st, dict) else str(st)
-                lbl = st.get("label", "") if isinstance(st, dict) else ""
-                body_parts.append(f"{val}  —  {lbl}")
-            set_ph(slide, 1, "\n\n".join(body_parts), font_name=FB, font_size=14)
-
-        elif sec_type in ("cards", "feature_grid"):
-            items = sec_content if isinstance(sec_content, list) else []
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            half = len(items) // 2 + len(items) % 2
-            set_ph_formatted(slide, 1, items[:half], font_size=9)
-            set_ph_formatted(slide, 2, items[half:], font_size=9)
-
-        elif sec_type == "solution_columns":
-            solutions_data = sec_content.get("solutions", []) if isinstance(sec_content, dict) else (sec_content if isinstance(sec_content, list) else [])
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            # Distribute solutions across columns
-            left_sols, right_sols = [], []
-            for i, sol in enumerate(solutions_data[:3]):
-                name = sol.get("name", sol.get("title", "")) if isinstance(sol, dict) else str(sol)
-                tagline = sol.get("subtitle", sol.get("tagline", "")) if isinstance(sol, dict) else ""
-                features = sol.get("items", sol.get("features", [])) if isinstance(sol, dict) else []
-                item = {"title": name, "description": (tagline + "\n" if tagline else "") + "\n".join(f"✓ {f}" for f in features[:4])}
-                if i % 2 == 0:
-                    left_sols.append(item)
-                else:
-                    right_sols.append(item)
-            set_ph_formatted(slide, 1, left_sols, font_size=9)
-            set_ph_formatted(slide, 2, right_sols, font_size=9)
-
-        elif sec_type == "steps_benefits":
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            data = sec_content if isinstance(sec_content, dict) else {}
-            steps = data.get("steps", [])
-            benefits = data.get("benefits", [])
-            step_items = [{"title": f"{i+1}. {(s.get('title','') if isinstance(s,dict) else str(s))}", "description": s.get("description","") if isinstance(s,dict) else ""} for i, s in enumerate(steps[:5])]
-            ben_items = [{"title": f"✓ {(b.get('title','') if isinstance(b,dict) else str(b))}", "description": b.get("description","") if isinstance(b,dict) else ""} for b in benefits[:5]]
-            set_ph_formatted(slide, 1, step_items, font_size=9)
-            set_ph_formatted(slide, 2, ben_items, font_size=9)
-
-        elif sec_type == "two_column":
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            data = sec_content if isinstance(sec_content, dict) else {}
-            set_ph_formatted(slide, 1, data.get("left", data.get("column1", [])), font_size=9)
-            set_ph_formatted(slide, 2, data.get("right", data.get("column2", [])), font_size=9)
-
-        elif sec_type == "table":
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            table_data = sec_content if isinstance(sec_content, list) else []
-            if table_data:
-                rows, cols = len(table_data), max(len(r) for r in table_data if isinstance(r, list))
-                from pptx.util import Inches as In
-                tbl = slide.shapes.add_table(rows, cols, In(0.5), In(1.3), In(9), In(3.5)).table
-                for ri, row in enumerate(table_data):
-                    if not isinstance(row, list):
-                        continue
-                    for ci, cell in enumerate(row):
-                        if ci < cols:
-                            c = tbl.cell(ri, ci)
-                            c.text = str(cell)
-                            for p in c.text_frame.paragraphs:
-                                p.font.name = FB
-                                p.font.size = Pt(9 if ri > 0 else 10)
-                                p.font.bold = ri == 0
-
-        elif sec_type == "timeline":
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            phases = sec_content if isinstance(sec_content, list) else []
-            items = []
-            for phase in phases[:6]:
-                name = phase.get("name", phase.get("title", "")) if isinstance(phase, dict) else str(phase)
-                duration = phase.get("duration", "") if isinstance(phase, dict) else ""
-                tasks = phase.get("items", phase.get("tasks", [])) if isinstance(phase, dict) else []
-                title = f"{name} ({duration})" if duration else name
-                desc = ", ".join(str(t) for t in tasks[:3])
-                items.append({"title": title, "description": desc})
-            set_ph_formatted(slide, 1, items, font_size=10)
-
-        elif sec_type == "bullets":
-            items = sec_content if isinstance(sec_content, list) else [str(sec_content)]
-            if len(items) > 4:
-                slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
-                set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-                half = len(items) // 2 + len(items) % 2
-                set_ph_formatted(slide, 1, items[:half], font_size=10)
-                set_ph_formatted(slide, 2, items[half:], font_size=10)
-            else:
-                slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY"))
-                set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-                set_ph_formatted(slide, 1, items, font_size=10)
-
-        else:
-            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
-            set_ph(slide, 0, sec_title, font_name=FH, bold=True)
-            if isinstance(sec_content, str):
-                set_ph(slide, 1, sec_content, font_name=FB, font_size=11)
-            elif isinstance(sec_content, list):
-                set_ph_formatted(slide, 1, sec_content, font_size=10)
-            elif isinstance(sec_content, dict):
-                text = sec_content.get("text", sec_content.get("body", ""))
-                set_ph(slide, 1, str(text), font_name=FB, font_size=11)
-
-    # Closing
-    closing = prs.slides.add_slide(get_layout("SECTION_HEADER", "TITLE"))
-    set_ph(closing, 0, "CẢM ƠN QUÝ KHÁCH", font_name=FH, bold=True)
-
-    prs.save(str(output_path))
-    print(f"[Proposal] Template-based PPTX saved: {output_path}")
+    try:
+        script_path = Path(__file__).parent / "scripts" / "generate_proposal_pptx.js"
+        result = subprocess.run(
+            ["node", str(script_path), json_path, str(output_path)],
+            capture_output=True, text=True, timeout=60,
+            cwd=str(Path(__file__).parent),
+        )
+        if result.returncode != 0:
+            print(f"[Proposal] pptxgenjs template-mode error: {result.stderr}")
+            raise RuntimeError(f"pptxgenjs failed: {result.stderr[:500]}")
+        print(f"[Proposal] Template-mode PPTX created: {result.stdout.strip()}")
+    finally:
+        try:
+            os.unlink(json_path)
+        except Exception:
+            pass
 
 
 def _create_docx_proposal(content: dict, output_path: Path, legal_entity: str):
