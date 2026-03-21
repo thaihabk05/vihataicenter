@@ -136,6 +136,22 @@ function ProductTagSelector({
       </Label>
       {products.length > 0 ? (
         <div className="space-y-2">
+          {/* Global knowledge tag */}
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-muted-foreground">Chung</span>
+            <div className="flex flex-wrap gap-1.5 ml-2">
+              <Badge
+                variant={selected.includes("chung") ? "default" : "outline"}
+                className={`cursor-pointer transition-colors ${
+                  selected.includes("chung") ? "bg-emerald-600 hover:bg-emerald-700" : "hover:bg-muted border-emerald-300"
+                }`}
+                onClick={() => toggle("chung")}
+              >
+                Kiến thức chung
+                {selected.includes("chung") && <X className="size-3 ml-1" />}
+              </Badge>
+            </div>
+          </div>
           {products.map((p) => {
             const productSolutions = solutions.filter((s) => s.product_id === p.id);
             return (

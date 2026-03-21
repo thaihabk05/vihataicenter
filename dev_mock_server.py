@@ -3958,7 +3958,8 @@ async def _generate_proposal_content(task: dict) -> dict:
         prod = PRODUCTS.get(pid)
         if prod:
             all_solution_slugs.add(prod["slug"])
-    # Find docs tagged with any of the selected slugs
+    # Find docs tagged with any of the selected slugs OR tagged "chung" (global knowledge)
+    all_solution_slugs.add("chung")  # Always include global knowledge docs
     relevant_docs = []
     for doc in FILE_REGISTRY.values():
         doc_tags = set(doc.get("tags") or [])
