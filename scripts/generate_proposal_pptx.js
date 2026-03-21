@@ -103,11 +103,16 @@ function slideCover(pres, T, data) {
     x: 0.5, y: 1.6, w: 5.5, h: 1.2, fontSize: 32, fontFace: F.h, color: T.text, bold: true, margin: 0,
   });
 
-  // "cho Customer"
-  const customerDisplay = (data.customer || "").replace(/^cho\s+/i, "");
-  s.addText(`cho ${customerDisplay}`, {
-    x: 0.5, y: 2.85, w: 5, h: 0.5, fontSize: 18, fontFace: F.b, color: T.primary, bold: true, margin: 0,
-  });
+  // "cho Customer" - avoid "cho cho" duplication
+  let customerLine = (data.customer || "").trim();
+  if (customerLine && !customerLine.toLowerCase().startsWith("cho ")) {
+    customerLine = `cho ${customerLine}`;
+  }
+  if (customerLine) {
+    s.addText(customerLine, {
+      x: 0.5, y: 2.85, w: 5, h: 0.5, fontSize: 18, fontFace: F.b, color: T.primary, bold: true, margin: 0,
+    });
+  }
 
   // Accent underline
   s.addShape(pres.shapes.RECTANGLE, { x: 0.5, y: 3.4, w: 0.8, h: 0.04, fill: { color: T.highlight } });
@@ -130,7 +135,8 @@ function slideCover(pres, T, data) {
   s.addShape(pres.shapes.RECTANGLE, {
     x: 7.0, y: 1.2, w: 1.8, h: 0.4, fill: { color: T.primary },
   });
-  s.addText(`${customerDisplay} App`, {
+  const cleanCustomer = (data.customer || "").replace(/^cho\s+/i, "").trim();
+  s.addText(`${cleanCustomer || "Customer"} App`, {
     x: 7.1, y: 1.22, w: 1.6, h: 0.36, fontSize: 8, fontFace: F.b, color: "FFFFFF", margin: 0,
   });
   // Call button

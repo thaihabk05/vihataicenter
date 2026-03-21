@@ -1525,6 +1525,34 @@ function TemplatesTab() {
                   >
                     {uploading === e.id ? "Đang upload..." : (e.has_template ? "Thay template" : "Upload template")}
                   </Button>
+                  {/* Logo upload */}
+                  <input
+                    type="file"
+                    id={`logo-upload-${e.id}`}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (ev) => {
+                      const file = ev.target.files?.[0];
+                      if (!file) return;
+                      ev.target.value = "";
+                      try {
+                        const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/+$/, "");
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        const res = await fetch(`${baseUrl}/proposals/legal-entities/${e.id}/upload-logo`, { method: "POST", body: formData });
+                        const data = await res.json();
+                        if (res.ok) toast.success(`Logo uploaded: ${data.filename}`);
+                        else toast.error(data.detail || "Upload failed");
+                      } catch { toast.error("Upload logo failed"); }
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById(`logo-upload-${e.id}`)?.click()}
+                  >
+                    Upload logo
+                  </Button>
                 </div>
               </div>
             ))}

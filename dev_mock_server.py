@@ -3520,7 +3520,7 @@ def _extract_theme_from_pptx(pptx_path: str) -> dict:
 
     if is_light_theme:
         # Light theme: white/light backgrounds, dark text
-        bg = top_bg[0] if top_bg and _brightness(top_bg[0]) > 180 else "F3F3F3"
+        bg = "FFFFFF"  # Light theme: always white background
         bg_card = "FFFFFF"
         bg_light = "F8F9FA"
         text_color = text_dark if text_dark else "0C506F"
@@ -4164,6 +4164,43 @@ async def upload_legal_entity_template(entity_id: str, file: UploadFile = File(.
         }
 
 
+@app.post("/api/v1/proposals/legal-entities/{entity_id}/upload-logo")
+async def upload_legal_entity_logo(entity_id: str, file: UploadFile = File(...)):
+    """Upload logo for a legal entity."""
+    ASSETS_DIR = Path(__file__).parent / "data" / "assets"
+    ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+    if ext not in ("png", "jpg", "jpeg", "svg", "webp"):
+        raise HTTPException(400, "Only image files accepted (png, jpg, svg, webp)")
+
+    logo_name = f"logo_{entity_id}.{ext}"
+    logo_path = ASSETS_DIR / logo_name
+    content = await file.read()
+    logo_path.write_bytes(content)
+
+    return {"status": "ok", "logo_path": str(logo_path), "filename": logo_name, "size": len(content)}
+
+
+@app.post("/api/v1/proposals/upload-customer-logo")
+async def upload_customer_logo(file: UploadFile = File(...), customer_name: str = Form("")):
+    """Upload customer logo for proposal generation."""
+    LOGOS_DIR = Path(__file__).parent / "data" / "logos"
+    LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "png"
+    if ext not in ("png", "jpg", "jpeg", "svg", "webp"):
+        raise HTTPException(400, "Only image files accepted")
+
+    safe_name = re.sub(r'[^\w]', '_', customer_name.lower().strip()) if customer_name else "customer"
+    logo_name = f"{safe_name}.{ext}"
+    logo_path = LOGOS_DIR / logo_name
+    content = await file.read()
+    logo_path.write_bytes(content)
+
+    return {"status": "ok", "logo_path": str(logo_path), "filename": logo_name, "size": len(content)}
+
+
 @app.get("/api/v1/proposals/legal-entities/{entity_id}/theme")
 async def get_entity_theme(entity_id: str):
     """Get the theme colors for a legal entity."""
@@ -4572,16 +4609,29 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
     entities = _get_legal_entities()
     entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default", "template": ""})
 
-    # Fetch customer logo
+    # Find customer logo: check uploaded first, then fetch
+    customer_name = content.get("customer_name", content.get("subtitle", ""))
     customer_website = content.get("company_info", {}).get("website", "")
-    if not customer_website:
-        customer_website = content.get("customer_name", "").lower().replace(" ", "") + ".com"
-    customer_logo = _fetch_customer_logo(customer_website)
+    safe_cname = re.sub(r'[^\w]', '_', customer_name.lower().strip()) if customer_name else ""
+    logos_dir = Path(__file__).parent / "data" / "logos"
+    customer_logo = ""
+    # Check for uploaded customer logo
+    for ext in ["png", "jpg", "jpeg", "webp"]:
+        p = logos_dir / f"{safe_cname}.{ext}"
+        if p.exists() and p.stat().st_size > 100:
+            customer_logo = str(p)
+            break
+    # Fallback: fetch from web
+    if not customer_logo:
+        if not customer_website:
+            customer_website = customer_name.lower().replace(" ", "") + ".com" if customer_name else ""
+        customer_logo = _fetch_customer_logo(customer_website)
 
-    # Check for ViHAT logo
+    # Check for ViHAT/entity logo
     vihat_logo = ""
-    for logo_name in ["vihat_logo.png", "logo.png", "vihat.png"]:
-        p = Path(__file__).parent / "data" / "assets" / logo_name
+    assets_dir = Path(__file__).parent / "data" / "assets"
+    for logo_name in [f"logo_{legal_entity}.png", f"logo_{legal_entity}.jpg", "vihat_logo.png", "logo.png"]:
+        p = assets_dir / logo_name
         if p.exists():
             vihat_logo = str(p)
             break

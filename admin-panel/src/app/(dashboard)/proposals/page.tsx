@@ -35,6 +35,7 @@ import {
   ArrowLeft,
   Search,
   Sparkles,
+  Upload,
 } from "lucide-react";
 import { proposalApi } from "@/lib/api-client";
 import { INDUSTRIES } from "@/lib/constants";
@@ -534,6 +535,40 @@ export default function ProposalsPage() {
               )}
             </div>
           )}
+
+          {/* Customer Logo Upload */}
+          <div className="grid gap-2">
+            <Label>Logo khách hàng (cho slide cover)</Label>
+            <div className="flex items-center gap-3">
+              <input
+                id="customer-logo-input"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const formData = new FormData();
+                  formData.append("file", f);
+                  formData.append("customer_name", customerName);
+                  try {
+                    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/+$/, "");
+                    const res = await fetch(`${baseUrl}/proposals/upload-customer-logo`, { method: "POST", body: formData });
+                    const data = await res.json();
+                    if (res.ok) {
+                      toast.success(`Logo uploaded: ${data.filename}`);
+                    } else {
+                      toast.error(data.detail || "Upload failed");
+                    }
+                  } catch { toast.error("Upload failed"); }
+                }}
+              />
+              <Button size="sm" variant="outline" onClick={() => document.getElementById("customer-logo-input")?.click()}>
+                <Upload className="size-3.5 mr-1" /> Upload logo
+              </Button>
+              <span className="text-xs text-muted-foreground">Nếu không upload, hệ thống sẽ tự tìm từ website</span>
+            </div>
+          </div>
 
           {/* Products */}
           <div className="grid gap-2">
