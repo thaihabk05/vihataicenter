@@ -166,7 +166,7 @@ export const proposalApi = {
   deleteRfi: (industry: string) => apiClient.delete(`/proposals/rfi/${industry}`),
   // Legal entities
   getEntities: () => apiClient.get('/proposals/entities'),
-  getLegalEntities: () => apiClient.get('/proposals/legal-entities'),
+  getLegalEntities: () => apiClient.get('/proposals/entities'),
   // Company lookup
   lookupCompany: (data: { tax_code?: string; website?: string; company_name?: string }) =>
     apiClient.post('/proposals/lookup-company', data),

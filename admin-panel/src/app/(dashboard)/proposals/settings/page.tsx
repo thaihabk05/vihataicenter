@@ -1503,27 +1503,27 @@ function TemplatesTab() {
                     )}
                   </div>
                 </div>
-                <div>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      accept=".pptx"
-                      className="hidden"
-                      onChange={(ev) => {
-                        const file = ev.target.files?.[0];
-                        if (file) handleUpload(e.id, file);
-                        ev.target.value = "";
-                      }}
-                      disabled={uploading === e.id}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={uploading === e.id}
-                    >
-                      {uploading === e.id ? "Đang upload..." : (e.has_template ? "Thay template" : "Upload template")}
-                    </Button>
-                  </label>
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    id={`tpl-upload-${e.id}`}
+                    accept=".pptx"
+                    className="hidden"
+                    onChange={(ev) => {
+                      const file = ev.target.files?.[0];
+                      if (file) handleUpload(e.id, file);
+                      ev.target.value = "";
+                    }}
+                    disabled={uploading === e.id}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={uploading === e.id}
+                    onClick={() => document.getElementById(`tpl-upload-${e.id}`)?.click()}
+                  >
+                    {uploading === e.id ? "Đang upload..." : (e.has_template ? "Thay template" : "Upload template")}
+                  </Button>
                 </div>
               </div>
             ))}
