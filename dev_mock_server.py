@@ -3030,9 +3030,46 @@ async def _run_web_import(task_id: str, url: str, dataset_id: str, knowledge_bas
         extractor.feed(html)
         page_text = "\n".join(extractor.result)
 
+        # If text extraction failed (SPA/JS-rendered page), try meta tags
+        if not page_text.strip() or len(page_text) < 50:
+            meta_parts = []
+            # Extract meta title
+            meta_title = re.search(r'<meta\s+name="title"\s+content="([^"]+)"', html)
+            if meta_title:
+                meta_parts.append(f"Title: {meta_title.group(1)}")
+            # Extract meta description
+            meta_desc = re.search(r'<meta\s+name="description"\s+content="([^"]+)"', html)
+            if meta_desc:
+                meta_parts.append(f"Description: {meta_desc.group(1)}")
+            # Extract og:title and og:description
+            og_title = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', html)
+            if og_title and og_title.group(1) not in str(meta_parts):
+                meta_parts.append(f"OG Title: {og_title.group(1)}")
+            og_desc = re.search(r'<meta\s+property="og:description"\s+content="([^"]+)"', html)
+            if og_desc and og_desc.group(1) not in str(meta_parts):
+                meta_parts.append(f"OG Description: {og_desc.group(1)}")
+            # Try <title> tag
+            title_match = re.search(r'<title>([^<]+)</title>', html)
+            if title_match:
+                meta_parts.insert(0, f"Page Title: {title_match.group(1)}")
+            # Try JSON-LD structured data
+            json_ld = re.findall(r'<script[^>]*type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
+            for jld in json_ld:
+                try:
+                    ld_data = json.loads(jld)
+                    if isinstance(ld_data, dict):
+                        for key in ("description", "articleBody", "text", "name"):
+                            if key in ld_data and ld_data[key]:
+                                meta_parts.append(f"{key}: {ld_data[key]}")
+                except Exception:
+                    pass
+            if meta_parts:
+                page_text = "\n\n".join(meta_parts)
+                print(f"[WebImport] SPA detected, using meta tags ({len(page_text)} chars)")
+
         if not page_text.strip():
             task["status"] = "error"
-            task["error"] = "Không thể trích xuất nội dung từ URL"
+            task["error"] = "Không thể trích xuất nội dung từ URL (trang SPA/JS). Thử dùng Import từ Google Drive."
             task["completed_at"] = datetime.now().isoformat()
             return
 
