@@ -295,6 +295,7 @@ export default function ProposalsPage() {
         company_info: companyInfo,
         legal_entity: legalEntity,
         output_format: outputFormat,
+        brief_text: brief.trim(),
       });
 
       toast.success("Đang tạo proposal! Vui lòng chờ...");

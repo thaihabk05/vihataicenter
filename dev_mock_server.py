@@ -3750,6 +3750,7 @@ class ProposalGenerateRequest(BaseModel):
     company_info: dict = {}
     legal_entity: str = "omijsc"
     output_format: str = "pptx"  # pptx or docx
+    brief_text: str = ""  # Original brief from user
 
 
 async def _generate_proposal_content(task: dict) -> dict:
@@ -3783,12 +3784,36 @@ async def _generate_proposal_content(task: dict) -> dict:
 - Tích hợp: {', '.join(p.get('integration_options', []))}
 """
 
+    # Query knowledge base for relevant documents
+    kb_context = ""
+    all_solution_slugs = selected_slugs.copy()
+    for pid in resolved_product_ids:
+        prod = PRODUCTS.get(pid)
+        if prod:
+            all_solution_slugs.add(prod["slug"])
+    # Find docs tagged with any of the selected slugs
+    relevant_docs = []
+    for doc in FILE_REGISTRY.values():
+        doc_tags = set(doc.get("tags") or [])
+        if doc_tags.intersection(all_solution_slugs) and doc.get("description"):
+            relevant_docs.append(doc)
+    if relevant_docs:
+        kb_context = "\n=== TRI THỨC BỔ SUNG TỪ KHO DỮ LIỆU ===\n"
+        for doc in relevant_docs[:10]:  # Limit to 10 docs
+            kb_context += f"\n--- {doc.get('title', doc.get('file_name', ''))} ---\n"
+            kb_context += f"{doc.get('description', '')}\n"
+
     # All available products for reference
     all_products = [p for p in PRODUCTS.values() if p.get("status") == "active"]
     all_products_brief = ", ".join([f"{p['name']}" for p in all_products])
 
+    # Brief text from user
+    brief_text = task.get("brief_text", "")
     rfi_text = "\n".join([f"- {k}: {v}" for k, v in task.get("rfi_answers", {}).items() if v])
     company_text = json.dumps(task.get("company_info", {}), ensure_ascii=False)
+
+    # Solution names for title
+    solution_names_text = ", ".join(selected_solution_names) if selected_solution_names else "giải pháp phù hợp"
 
     # Get tenant info for branding
     tenant = TENANTS.get(DEFAULT_TENANT_ID, {})
@@ -3796,66 +3821,92 @@ async def _generate_proposal_content(task: dict) -> dict:
 
     prompt = f"""Bạn là chuyên gia tư vấn giải pháp CPaaS & Contact Center tại {company_name}. Hãy tạo nội dung PROPOSAL CHI TIẾT và CHUYÊN NGHIỆP cho khách hàng.
 
-THÔNG TIN KHÁCH HÀNG:
+=== BRIEF TỪ KHÁCH HÀNG / SALES ===
+{brief_text if brief_text.strip() else 'Không có brief cụ thể'}
+
+QUAN TRỌNG: Phải ĐỌC KỸ brief và PHÂN TÍCH từng yêu cầu cụ thể của khách hàng. Proposal phải ĐÁP ỨNG TRỰC TIẾP mọi nhu cầu được đề cập trong brief. Không bỏ sót bất kỳ yêu cầu nào.
+
+=== THÔNG TIN KHÁCH HÀNG ===
 - Tên công ty: {task['customer_name']}
 - Ngành nghề: {task['industry']}
 - Thông tin doanh nghiệp: {company_text}
 
-RFI (Thông tin khảo sát nhu cầu):
-{rfi_text if rfi_text.strip() else 'Chưa có thông tin RFI cụ thể'}
+=== RFI (Khảo sát nhu cầu) ===
+{rfi_text if rfi_text.strip() else 'Chưa có RFI cụ thể'}
 
 === THÔNG TIN CHI TIẾT SẢN PHẨM ĐƯỢC CHỌN ===
 {products_detail if products_detail.strip() else 'Chưa chọn sản phẩm cụ thể - hãy đề xuất giải pháp phù hợp nhất'}
 
 === TẤT CẢ SẢN PHẨM CÓ THỂ ĐỀ XUẤT ===
 {all_products_brief}
-
-YÊU CẦU QUAN TRỌNG:
-1. Viết NỘI DUNG CHI TIẾT, CHUYÊN SÂU cho từng section (KHÔNG viết sơ sài)
-2. Mỗi bullet point phải có giải thích cụ thể (2-3 câu), KHÔNG chỉ liệt kê tên tính năng
-3. Phân tích nhu cầu cụ thể của khách hàng dựa trên ngành nghề và RFI
-4. Đề xuất giải pháp với lý do tại sao phù hợp với khách hàng
-5. Bảng giá/gói dịch vụ phải có chi tiết từng hạng mục
-6. Lộ trình triển khai phải có timeline cụ thể (tuần/tháng)
+{kb_context}
 
 Trả về JSON với format:
 {{
-  "title": "ĐỀ XUẤT GIẢI PHÁP [tên giải pháp chính]",
-  "subtitle": "Dành cho {task['customer_name']} - [mô tả ngắn giải pháp]",
+  "cover_title": "Proposal Giải pháp {solution_names_text} cho {task['customer_name']}",
+  "cover_subtitle": "{company_name} — Đối tác công nghệ tin cậy",
+  "title": "GIẢI PHÁP [tên giải pháp chính]",
+  "subtitle": "Dành cho {task['customer_name']}",
   "sections": [
     {{
-      "heading": "Tên section (IN HOA)",
-      "type": "bullets" hoặc "text" hoặc "table" hoặc "two_column",
-      "content": [nội dung tương ứng]
+      "heading": "Tên section",
+      "type": "bullets" | "text" | "table" | "two_column",
+      "content": [nội dung]
     }}
   ]
 }}
 
-CẤU TRÚC BẮT BUỘC các sections (phải có ĐẦY ĐỦ):
+CẤU TRÚC BẮT BUỘC — phải có ĐẦY ĐỦ 15 sections sau (đúng thứ tự):
 
-1. "PHÂN TÍCH NHU CẦU KHÁCH HÀNG" (type: "bullets") — 5-7 bullets, mỗi bullet 2-3 câu phân tích nhu cầu cụ thể
+1. "EXECUTIVE SUMMARY" (type: "text")
+   — 1 đoạn 5-7 câu tóm gọn: vấn đề → giải pháp → kết quả kỳ vọng. C-level đọc xong hiểu deal.
 
-2. "GIẢI PHÁP ĐỀ XUẤT" (type: "text") — đoạn văn 4-6 câu tổng quan giải pháp, tại sao phù hợp
+2. "VỀ {company_name.upper()}" (type: "bullets")
+   — 5-7 bullets: năm thành lập, số khách hàng, sản phẩm chính, chứng chỉ/giải thưởng, đối tác chiến lược.
 
-3. Với MỖI sản phẩm đề xuất, tạo 1 section riêng:
-   "[TÊN SẢN PHẨM] - TÍNH NĂNG NỔI BẬT" (type: "bullets") — 6-10 tính năng, mỗi cái kèm mô tả ngắn
+3. "HIỂU KHÁCH HÀNG - {task['customer_name'].upper()}" (type: "bullets")
+   — 5-7 bullets phân tích business KH: quy mô, kênh bán, điểm mạnh, thách thức hiện tại. Thể hiện "chúng tôi hiểu bạn".
 
-4. "KIẾN TRÚC GIẢI PHÁP & TÍCH HỢP" (type: "bullets") — mô tả cách các sản phẩm kết nối, tích hợp CRM/ERP
+4. "THÁCH THỨC & PAIN POINTS" (type: "bullets")
+   — 5-7 bullets đặt vấn đề CỤ THỂ cho KH, gắn với business impact (mất tiền, mất KH, inefficiency). PHẢI bám sát brief.
 
-5. "LỢI ÍCH KHI TRIỂN KHAI" (type: "two_column") — cột trái: lợi ích vận hành, cột phải: lợi ích kinh doanh
-   Format two_column: {{"left_title": "...", "left_items": [...], "right_title": "...", "right_items": [...]}}
+5. "GIẢI PHÁP ĐỀ XUẤT - TỔNG QUAN" (type: "text")
+   — Đoạn văn 5-8 câu: high-level tổng quan giải pháp, tại sao fit với KH, liên kết trực tiếp với pain points.
 
-6. "LỘ TRÌNH TRIỂN KHAI" (type: "table") — bảng có cột [Giai đoạn, Thời gian, Nội dung, Kết quả]
-   Chia thành 3-4 giai đoạn rõ ràng với timeline cụ thể
+6-8. Với MỖI sản phẩm/giải pháp đề xuất, tạo 1 section riêng:
+   "CHI TIẾT GIẢI PHÁP: [TÊN SẢN PHẨM]" (type: "bullets")
+   — 8-12 tính năng, mỗi cái có mô tả 2-3 câu. PHẢI đề cập tính năng cụ thể liên quan đến brief (VD: nếu brief nói "gọi trên app" → phải có mục về SDK/WebRTC/in-app calling).
 
-7. "GÓI DỊCH VỤ & BÁO GIÁ THAM KHẢO" (type: "table") — bảng [Hạng mục, Mô tả, Đơn giá, Ghi chú]
-   Liệt kê chi tiết từng hạng mục: license, setup, training, support
+9. "KIẾN TRÚC KỸ THUẬT" (type: "bullets")
+   — System architecture, integration points, data flow. Mô tả cách các module kết nối.
 
-8. "TẠI SAO CHỌN {company_name.upper()}" (type: "bullets") — 5-6 lý do cạnh tranh
+10. "CASE STUDY" (type: "bullets")
+   — 3-4 bullets: KH cùng ngành hoặc quy mô đã triển khai thành công, có số liệu before/after.
 
-9. "BƯỚC TIẾP THEO" (type: "bullets") — 3-4 bước cụ thể để bắt đầu triển khai
+11. "ROI & BUSINESS IMPACT" (type: "two_column")
+   — Cột trái "Tiết kiệm chi phí": 4-5 items với số liệu %. Cột phải "Nâng cao hiệu quả": 4-5 items.
+   Format: {{"left_title": "Tiết kiệm chi phí", "left_items": [...], "right_title": "Nâng cao hiệu quả", "right_items": [...]}}
 
-QUAN TRỌNG: Viết bằng tiếng Việt, chuyên nghiệp, chi tiết. Chỉ trả về JSON, không thêm text khác."""
+12. "GÓI GIẢI PHÁP & PRICING" (type: "table")
+   — Bảng [Hạng mục, Mô tả, Đơn giá tham khảo, Ghi chú]. Liệt kê: license, setup, training, support.
+
+13. "LỘ TRÌNH TRIỂN KHAI" (type: "table")
+   — Bảng [Giai đoạn, Thời gian, Nội dung, Deliverables]. 4-5 phases với timeline cụ thể.
+
+14. "SLA & HỖ TRỢ" (type: "bullets")
+   — 5-6 bullets: cam kết uptime, response time, dedicated support model, escalation.
+
+15. "TẠI SAO CHỌN {company_name.upper()}" (type: "bullets")
+   — 5-6 lý do differentiators, competitive advantage.
+
+16. "BƯỚC TIẾP THEO & LIÊN HỆ" (type: "bullets")
+   — 4-5 action items cụ thể, contact info.
+
+QUAN TRỌNG:
+- Viết bằng tiếng Việt, chuyên nghiệp, chi tiết
+- BÁM SÁT BRIEF: mọi yêu cầu trong brief PHẢI được đáp ứng trong proposal
+- Mỗi bullet point phải có giải thích 2-3 câu, KHÔNG chỉ liệt kê tên
+- Chỉ trả về JSON, không thêm text khác"""
 
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
@@ -3867,7 +3918,7 @@ QUAN TRỌNG: Viết bằng tiếng Việt, chuyên nghiệp, chi tiết. Chỉ 
             },
             json={
                 "model": "claude-sonnet-4-20250514",
-                "max_tokens": 8000,
+                "max_tokens": 12000,
                 "messages": [{"role": "user", "content": prompt}],
             },
         )
@@ -3900,23 +3951,44 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
 
     if template_path.exists():
         prs = Presentation(str(template_path))
-        # KEEP template slides (branding, company intro, etc.)
-        # Just customize the cover subtitle if possible
         template_slide_count = len(prs.slides)
-        customer_name = content.get("subtitle", "")
 
-        # Try to customize cover slide (slide 0) with customer name
+        # Customize cover slide (slide 0) with proposal title
+        cover_title = content.get("cover_title", f"Proposal cho {content.get('subtitle', '')}")
+        cover_subtitle = content.get("cover_subtitle", "")
         if template_slide_count > 0:
             cover = prs.slides[0]
+            # Find the largest text shape (likely the title) and second largest (subtitle)
+            text_shapes = []
             for shape in cover.shapes:
-                if shape.has_text_frame:
-                    text = shape.text_frame.text.strip()
-                    # Find subtitle-like text on cover and append customer info
-                    if "nâng cao trải nghiệm" in text.lower() or "cung cấp" in text.lower():
-                        # Keep original, add customer name below
-                        pass
+                if shape.has_text_frame and shape.text_frame.text.strip():
+                    text_shapes.append(shape)
+            # Sort by font size or shape height to find title vs subtitle
+            if text_shapes:
+                # Replace the first significant text with cover_title
+                for shape in text_shapes:
+                    tf = shape.text_frame
+                    original_text = tf.text.strip().lower()
+                    # Detect title-like shapes (usually the main heading)
+                    if any(kw in original_text for kw in ["giải pháp", "nâng cao", "cung cấp", "đa kênh", "tổng đài", "omicall", "proposal"]):
+                        # Preserve formatting but change text
+                        for para in tf.paragraphs:
+                            for run in para.runs:
+                                run.text = cover_title
+                                break
+                            break
+                        break
+                else:
+                    # If no match, try the first text shape
+                    if text_shapes:
+                        tf = text_shapes[0].text_frame
+                        for para in tf.paragraphs:
+                            for run in para.runs:
+                                run.text = cover_title
+                                break
+                            break
 
-        print(f"[Proposal] Keeping {template_slide_count} template slides, adding content slides after")
+        print(f"[Proposal] Cover: '{cover_title}'. Keeping {template_slide_count} template slides")
     else:
         prs = Presentation()
         prs.slide_width = Inches(13.333)
@@ -4150,8 +4222,8 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
 
     # ====== ADD A DIVIDER SLIDE before custom content ======
     if template_slide_count > 0:
-        # Add section header to transition from template to custom content
-        add_section_header(f"ĐỀ XUẤT GIẢI PHÁP CHO {content.get('subtitle', '').split('-')[0].strip().upper() if '-' in content.get('subtitle', '') else content.get('title', 'KHÁCH HÀNG').upper()}")
+        divider_title = content.get("title", "ĐỀ XUẤT GIẢI PHÁP").upper()
+        add_section_header(divider_title)
 
     # ====== CONTENT SLIDES FROM AI ======
     for section in content.get("sections", []):
@@ -4353,6 +4425,7 @@ async def generate_proposal(req: ProposalGenerateRequest):
         "company_info": req.company_info,
         "legal_entity": req.legal_entity,
         "output_format": req.output_format,
+        "brief_text": req.brief_text,
         "started_at": datetime.now().isoformat(),
         "completed_at": None,
         "file_name": None,
