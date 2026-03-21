@@ -53,7 +53,7 @@ import {
 import { knowledgeApi, productApi, solutionApi } from "@/lib/api-client";
 import { DEPARTMENTS, DOC_STATUS, KB_LIST } from "@/lib/constants";
 import type { KnowledgeDocument, Product, DriveSource } from "@/lib/types";
-import { Package, X, RefreshCw, Search, Sparkles } from "lucide-react";
+import { Package, X, RefreshCw, Search, Sparkles, Globe } from "lucide-react";
 import { format } from "date-fns";
 import { vi } from "date-fns/locale";
 
@@ -212,7 +212,7 @@ interface ImportTask {
 
 /* ─── Drive Import Dialog ─── */
 
-type ImportMode = "folder" | "link";
+type ImportMode = "folder" | "link" | "web";
 
 function DriveImportDialog({
   open,
@@ -260,6 +260,14 @@ function DriveImportDialog({
           description: description.trim() || undefined,
           product_tags: productTags.length > 0 ? productTags : undefined,
         });
+      } else if (mode === "web") {
+        await knowledgeApi.importWeb({
+          url: url.trim(),
+          knowledge_base: kb,
+          title: title.trim() || undefined,
+          description: description.trim() || undefined,
+          product_tags: productTags.length > 0 ? productTags : undefined,
+        });
       } else {
         await knowledgeApi.importLink({
           url: url.trim(),
@@ -294,10 +302,10 @@ function DriveImportDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderSync className="size-5 text-primary" />
-            Import t&#7915; Google Drive
+            Import tri thức
           </DialogTitle>
           <DialogDescription>
-            Th&#234;m t&#224;i li&#7879;u t&#7915; Google Drive folder ho&#7863;c link Google Sheet/Doc
+            Thêm tài liệu từ Google Drive, Google Sheet/Doc, hoặc trang web
           </DialogDescription>
         </DialogHeader>
 
@@ -312,7 +320,7 @@ function DriveImportDialog({
             }`}
           >
             <FolderOpen className="size-4" />
-            Th&#432; m&#7909;c Drive
+            Drive
           </button>
           <button
             onClick={() => setMode("link")}
@@ -323,7 +331,18 @@ function DriveImportDialog({
             }`}
           >
             <Link2 className="size-4" />
-            Link Sheet / Doc
+            Sheet / Doc
+          </button>
+          <button
+            onClick={() => setMode("web")}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              mode === "web"
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <Globe className="size-4" />
+            Web URL
           </button>
         </div>
 
@@ -333,6 +352,8 @@ function DriveImportDialog({
             <Label>
               {mode === "folder"
                 ? "URL thư mục Google Drive"
+                : mode === "web"
+                ? "URL trang web"
                 : "URL Google Sheet / Doc"}
             </Label>
             <Input
@@ -341,6 +362,8 @@ function DriveImportDialog({
               placeholder={
                 mode === "folder"
                   ? "https://drive.google.com/drive/folders/..."
+                  : mode === "web"
+                  ? "https://example.com/product-info"
                   : "https://docs.google.com/spreadsheets/d/..."
               }
               disabled={submitting}
@@ -1119,6 +1142,7 @@ export default function KnowledgePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [solutions, setSolutions] = useState<SolutionItem[]>([]);
   const [productFilter, setProductFilter] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // Sources
   const [sources, setSources] = useState<DriveSource[]>([]);
@@ -1216,6 +1240,13 @@ export default function KnowledgePage() {
   const filteredDocs = docs.filter((d) => {
     if (activeTab !== "all" && d.knowledge_base !== activeTab) return false;
     if (productFilter && !(d.tags ?? []).includes(productFilter)) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const title = (d.title || "").toLowerCase();
+      const fileName = (d.file_name || "").toLowerCase();
+      const desc = (d.description || "").toLowerCase();
+      if (!title.includes(q) && !fileName.includes(q) && !desc.includes(q)) return false;
+    }
     return true;
   });
 
@@ -1375,8 +1406,19 @@ export default function KnowledgePage() {
                 ))}
               </TabsList>
 
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm tài liệu..."
+                    className="pl-8 h-8 w-[220px] text-sm"
+                  />
+                </div>
+
               {products.length > 0 && (
-                <div className="flex items-center gap-2">
+                <>
                   <Package className="size-4 text-muted-foreground" />
                   <Select value={productFilter || "_all"} onValueChange={(v) => setProductFilter(v === "_all" ? "" : (v ?? ""))}>
                     <SelectTrigger className="w-[180px] h-8 text-sm">
@@ -1391,8 +1433,9 @@ export default function KnowledgePage() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </>
               )}
+              </div>
             </div>
 
             <TabsContent value={activeTab} className="mt-4">

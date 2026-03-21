@@ -2989,6 +2989,173 @@ async def import_link(req: ImportLinkRequest, request: Request):
     return {"task_id": task_id, "status": "importing", "source_id": source_id, "message": "Import đang chạy nền..."}
 
 
+class ImportWebUrlRequest(BaseModel):
+    url: str
+    knowledge_base: str
+    title: str = ""
+    description: str = ""
+    product_tags: List[str] = []
+
+
+async def _run_web_import(task_id: str, url: str, dataset_id: str, knowledge_base: str, title: str, source_id: str, product_tags: List[str], uploaded_by: str):
+    """Background worker: fetch web page content and send to Dify."""
+    task = IMPORT_TASKS[task_id]
+    try:
+        # Fetch the web page
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (compatible; ViHAT-Bot/1.0)"})
+            resp.raise_for_status()
+            html = resp.text
+
+        # Extract text from HTML
+        from html.parser import HTMLParser
+        class TextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.result = []
+                self.skip = False
+            def handle_starttag(self, tag, attrs):
+                if tag in ("script", "style", "nav", "footer", "header"):
+                    self.skip = True
+            def handle_endtag(self, tag):
+                if tag in ("script", "style", "nav", "footer", "header"):
+                    self.skip = False
+            def handle_data(self, data):
+                if not self.skip:
+                    text = data.strip()
+                    if text:
+                        self.result.append(text)
+
+        extractor = TextExtractor()
+        extractor.feed(html)
+        page_text = "\n".join(extractor.result)
+
+        if not page_text.strip():
+            task["status"] = "error"
+            task["error"] = "Không thể trích xuất nội dung từ URL"
+            task["completed_at"] = datetime.now().isoformat()
+            return
+
+        # Save as text file
+        safe_name = re.sub(r'[^\w\s-]', '', title or "webpage").strip().replace(' ', '_')
+        file_name = f"{safe_name}_{uuid.uuid4().hex[:6]}.txt"
+        file_path = UPLOADS_DIR / file_name
+        file_path.write_text(page_text, encoding="utf-8")
+
+        # Send to Dify
+        file_size = file_path.stat().st_size
+        DIFY_FILE_LIMIT = 15 * 1024 * 1024
+        section_doc_ids = []
+
+        if file_size <= DIFY_FILE_LIMIT and DIFY_DATASET_API_KEY:
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client2:
+                    with open(file_path, "rb") as f:
+                        files = {"file": (file_name, f, "text/plain")}
+                        data = {"indexing_technique": "high_quality", "process_rule": json.dumps({"mode": "automatic"})}
+                        headers = {"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"}
+                        resp2 = await client2.post(
+                            f"https://api.dify.ai/v1/datasets/{dataset_id}/document/create_by_file",
+                            files=files, data=data, headers=headers,
+                        )
+                    if resp2.status_code in (200, 201):
+                        doc_data = resp2.json()
+                        doc = doc_data.get("document", {})
+                        section_doc_ids.append(doc.get("id", ""))
+            except Exception as e:
+                print(f"[WebImport] Dify upload error: {e}")
+
+        # Register in FILE_REGISTRY
+        parent_id = f"web-{uuid.uuid4().hex[:8]}"
+        FILE_REGISTRY[parent_id] = {
+            "id": parent_id,
+            "knowledge_base": knowledge_base,
+            "title": title or url,
+            "description": "",
+            "file_name": file_name,
+            "file_path": str(file_path),
+            "file_type": "web",
+            "tags": product_tags,
+            "section_doc_ids": section_doc_ids,
+            "status": "active",
+            "uploaded_at": datetime.now().isoformat(),
+            "uploaded_by": uploaded_by,
+            "source_id": source_id,
+            "drive_url": url,
+        }
+        save_registry()
+
+        # Update source
+        if source_id and source_id in DRIVE_SOURCES:
+            DRIVE_SOURCES[source_id]["document_ids"].append(parent_id)
+            save_sources()
+
+        task["status"] = "completed"
+        task["sections_count"] = 1
+        task["completed_at"] = datetime.now().isoformat()
+        print(f"[WebImport] Completed: {title or url} ({len(page_text)} chars)")
+
+    except Exception as e:
+        import traceback
+        task["status"] = "error"
+        task["error"] = str(e)
+        task["completed_at"] = datetime.now().isoformat()
+        print(f"[WebImport] Error: {e}\n{traceback.format_exc()}")
+
+
+@app.post("/api/v1/admin/knowledge/import-web")
+async def import_web_url(req: ImportWebUrlRequest, request: Request):
+    """Import knowledge from a web URL (fetch content, extract text, send to Dify)."""
+    dataset_id = DIFY_DATASET_IDS.get(req.knowledge_base)
+    if not dataset_id:
+        raise HTTPException(400, f"Unknown knowledge base '{req.knowledge_base}'")
+
+    if not req.url.startswith(("http://", "https://")):
+        raise HTTPException(400, "URL must start with http:// or https://")
+
+    # Don't allow Google Drive URLs — use import-link for those
+    if "drive.google.com" in req.url or "docs.google.com" in req.url:
+        raise HTTPException(400, "Dùng 'Import Link' cho Google Drive/Docs/Sheets")
+
+    user = get_current_user(request)
+    uploaded_by = user.get("sub", "")
+
+    source_id = f"src-{uuid.uuid4().hex[:8]}"
+    DRIVE_SOURCES[source_id] = {
+        "id": source_id,
+        "name": req.title or req.url,
+        "description": req.description,
+        "type": "web",
+        "url": req.url,
+        "folder_id": "",
+        "knowledge_base": req.knowledge_base,
+        "product_tags": req.product_tags,
+        "document_ids": [],
+        "uploaded_by": uploaded_by,
+        "created_at": datetime.now().isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+    save_sources()
+
+    task_id = str(uuid.uuid4())[:8]
+    IMPORT_TASKS[task_id] = {
+        "task_id": task_id,
+        "type": "web",
+        "status": "importing",
+        "url": req.url,
+        "title": req.title or req.url,
+        "knowledge_base": req.knowledge_base,
+        "source_id": source_id,
+        "sections_count": 0,
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+    }
+
+    asyncio.create_task(_run_web_import(task_id, req.url, dataset_id, req.knowledge_base, req.title, source_id, req.product_tags, uploaded_by))
+
+    return {"task_id": task_id, "status": "importing", "source_id": source_id, "message": "Đang import từ web..."}
+
+
 @app.get("/api/v1/admin/knowledge/import-tasks")
 async def list_import_tasks():
     """List all import tasks (active and recent)."""

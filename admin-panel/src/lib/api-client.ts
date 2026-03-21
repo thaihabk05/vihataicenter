@@ -84,6 +84,10 @@ export const knowledgeApi = {
     url: string; knowledge_base: string;
     title?: string; description?: string; product_tags?: string[];
   }) => apiClient.post('/admin/knowledge/import-link', data),
+  importWeb: (data: {
+    url: string; knowledge_base: string;
+    title?: string; description?: string; product_tags?: string[];
+  }) => apiClient.post('/admin/knowledge/import-web', data),
   importTasks: () => apiClient.get('/admin/knowledge/import-tasks'),
   driveStatus: () => apiClient.get('/admin/knowledge/drive-status'),
   // Sources
