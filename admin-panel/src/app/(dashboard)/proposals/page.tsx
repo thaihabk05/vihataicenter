@@ -214,6 +214,37 @@ export default function ProposalsPage() {
     };
   }, [tasks, fetchTasks]);
 
+  // Auto-lookup when website or taxCode changes (debounced)
+  useEffect(() => {
+    if (!website && !taxCode) return;
+    const timer = setTimeout(() => {
+      handleLookupAuto();
+    }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [website, taxCode]);
+
+  const handleLookupAuto = async () => {
+    if (!taxCode && !website) return;
+    if (lookingUp) return;
+    setLookingUp(true);
+    try {
+      const res = await proposalApi.lookupCompany({
+        tax_code: taxCode,
+        website: website,
+        company_name: customerName,
+      });
+      setCompanyInfo(res.data);
+      if (res.data.company_name && !customerName) {
+        setCustomerName(res.data.company_name);
+      }
+    } catch {
+      // Silent fail for auto-lookup
+    } finally {
+      setLookingUp(false);
+    }
+  };
+
   // Handlers
   const handleLookup = async () => {
     if (!taxCode && !website) {
