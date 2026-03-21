@@ -4470,7 +4470,7 @@ CẤU TRÚC BẮT BUỘC — phải có ĐẦY ĐỦ 16 sections (đúng thứ t
 
 3. VỀ {company_name.upper()} (type: "stats") — 4 stats với value+label+description
 
-4. PHÂN TÍCH KHÁCH HÀNG (type: "text") — Phân tích business KH: quy mô, kênh bán, thách thức.
+4. PHÂN TÍCH KHÁCH HÀNG (type: "two_column") — Left: "about" section tóm tắt KH (2-3 câu ngắn) + "needs" section (3 bullet points nhu cầu/mong muốn). Right: "highlights" section (3-4 facts ngắn gọn: quy mô, ngành, đặc thù). Content format: {left_title, left_items:[], right_title, right_items:[]}.
 
 5. THÁCH THỨC HIỆN TẠI (type: "cards") — 4 cards với title+body+impact
 

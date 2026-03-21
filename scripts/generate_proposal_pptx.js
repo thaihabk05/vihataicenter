@@ -301,22 +301,17 @@ function slideCards(pres, T, title, cards, num, total, label) {
       });
     }
 
-    // Stats at bottom of card (big numbers)
+    // Impact stat at bottom of card (compact)
     if (cImpact) {
-      const stats = String(cImpact).split("|").map(s => s.trim());
-      const labels = cImpactLabel ? String(cImpactLabel).split("|").map(s => s.trim()) : [];
-      stats.slice(0, 2).forEach((st, si) => {
-        const stx = cx + 0.2 + si * (cardW / 2 - 0.2);
-        s.addText(st, {
-          x: stx, y: cy + cardH - 0.55, w: cardW / 2 - 0.3, h: 0.3,
-          fontSize: 16, fontFace: F.h, color: accent, bold: true, margin: 0,
-        });
-        if (labels[si]) {
-          s.addText(labels[si], {
-            x: stx, y: cy + cardH - 0.28, w: cardW / 2 - 0.3, h: 0.2,
-            fontSize: 7, fontFace: F.b, color: T.textMuted, margin: 0,
-          });
-        }
+      const impactText = String(cImpact);
+      // Show as a compact colored badge
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+        x: cx + 0.15, y: cy + cardH - 0.42, w: cardW - 0.3, h: 0.3,
+        fill: { color: accent }, transparency: 85, rectRadius: 0.04,
+      });
+      s.addText(impactText, {
+        x: cx + 0.2, y: cy + cardH - 0.4, w: cardW - 0.4, h: 0.26,
+        fontSize: 9, fontFace: F.h, color: accent, bold: true, margin: 0, valign: "middle",
       });
     }
   });
@@ -394,14 +389,48 @@ function slideBullets(pres, T, title, items, num, total, label) {
 function slideText(pres, T, title, text, num, total, label) {
   const s = pres.addSlide();
   addHeader(s, pres, T, title);
+  const sy = contentY(T);
 
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.7, y: 1.1, w: 8.6, h: 3.8, fill: { color: T.bgCard }, shadow: shadow(),
-  });
-  s.addText(String(text), {
-    x: 1.0, y: 1.3, w: 8.0, h: 3.4,
-    fontSize: 12, fontFace: F.b, color: T.textBody, margin: 0, valign: "top", paraSpaceAfter: 8,
-  });
+  // Split text into sentences/paragraphs for better readability
+  const fullText = String(text);
+  const sentences = fullText.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+
+  if (sentences.length <= 2) {
+    // Short text: show as highlighted paragraph with left accent bar
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+      x: 0.5, y: sy, w: 9, h: 3.5, fill: { color: T.bgCard }, rectRadius: 0.1,
+      line: { color: T.isLightTheme ? "E0E0E0" : T.bgCard, width: 0.5 },
+    });
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 0.5, y: sy + 0.1, w: 0.05, h: 3.3, fill: { color: T.primary },
+    });
+    s.addText(fullText, {
+      x: 0.8, y: sy + 0.2, w: 8.4, h: 3.1,
+      fontSize: 12, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+      lineSpacingMultiple: 1.4,
+    });
+  } else {
+    // Multi-sentence: show as bullet points with icons
+    const items = sentences.slice(0, 5);
+    const rowH = Math.min(0.7, 3.5 / items.length);
+    const accents = [T.primary, T.highlight, T.teal, T.success, "9C27B0"];
+
+    items.forEach((item, i) => {
+      const iy = sy + i * rowH;
+      const ac = accents[i % accents.length];
+
+      // Bullet circle
+      s.addShape(pres.shapes.OVAL, {
+        x: 0.6, y: iy + 0.08, w: 0.2, h: 0.2, fill: { color: ac },
+      });
+      // Text
+      s.addText(item.trim(), {
+        x: 0.95, y: iy, w: 8.4, h: rowH,
+        fontSize: 11, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+        lineSpacingMultiple: 1.3,
+      });
+    });
+  }
 
   addFooter(s, T, label, num, total);
 }
@@ -483,37 +512,55 @@ function slideTable(pres, T, title, tableData, num, total, label) {
 function slideTwoCol(pres, T, title, colData, num, total, label) {
   const s = pres.addSlide();
   addHeader(s, pres, T, title);
+  const sy = contentY(T);
 
-  const colW = 4.15, gap = 0.3;
-  const accents = [T.highlight, T.teal];
+  const colW = 4.3, gap = 0.2;
+  const accents = [T.primary, T.teal];
 
   ["left", "right"].forEach((side, ci) => {
-    const cx = 0.7 + ci * (colW + gap);
-    s.addShape(pres.shapes.RECTANGLE, {
-      x: cx, y: 1.1, w: colW, h: 3.8, fill: { color: T.bgCard }, shadow: shadow(),
-    });
-    // Top accent
-    s.addShape(pres.shapes.RECTANGLE, {
-      x: cx, y: 1.1, w: colW, h: 0.05, fill: { color: accents[ci] },
-    });
+    const cx = 0.5 + ci * (colW + gap);
 
     const colTitle = colData[`${side}_title`] || "";
-    const colItems = colData[`${side}_items`] || [];
+    const colItems = colData[`${side}_items`] || colData[side] || [];
 
-    s.addText(colTitle, {
-      x: cx + 0.2, y: 1.25, w: colW - 0.4, h: 0.35,
-      fontSize: 13, fontFace: F.h, color: accents[ci], bold: true, margin: 0,
-    });
+    // Section title with colored text
+    if (colTitle) {
+      s.addText(colTitle, {
+        x: cx + 0.15, y: sy, w: colW - 0.3, h: 0.35,
+        fontSize: 13, fontFace: F.h, color: accents[ci], bold: true, italic: true, margin: 0,
+      });
+    }
 
-    colItems.slice(0, 6).forEach((item, ii) => {
-      const iy = 1.7 + ii * 0.5;
+    const itemStartY = colTitle ? sy + 0.4 : sy;
+    const maxItems = Math.min(colItems.length, 5);
+    const itemH = Math.min(0.6, 3.2 / maxItems);
+
+    colItems.slice(0, maxItems).forEach((item, ii) => {
+      const iy = itemStartY + ii * itemH;
+      const itemText = typeof item === "string" ? item : (item.title || item.name || String(item));
+      const itemDesc = typeof item === "object" ? (item.description || item.body || "") : "";
+
+      // Bullet icon
       s.addShape(pres.shapes.OVAL, {
-        x: cx + 0.2, y: iy + 0.05, w: 0.15, h: 0.15, fill: { color: accents[ci] },
+        x: cx + 0.15, y: iy + 0.06, w: 0.18, h: 0.18, fill: { color: accents[ci] },
       });
-      s.addText(String(item), {
-        x: cx + 0.45, y: iy - 0.02, w: colW - 0.7, h: 0.45,
-        fontSize: 9, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
-      });
+
+      if (itemDesc) {
+        // Bold title + regular description
+        s.addText(itemText, {
+          x: cx + 0.42, y: iy, w: colW - 0.6, h: 0.22,
+          fontSize: 10, fontFace: F.h, color: T.text, bold: true, margin: 0,
+        });
+        s.addText(String(itemDesc), {
+          x: cx + 0.42, y: iy + 0.22, w: colW - 0.6, h: itemH - 0.28,
+          fontSize: 8.5, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+        });
+      } else {
+        s.addText(itemText, {
+          x: cx + 0.42, y: iy, w: colW - 0.6, h: itemH - 0.05,
+          fontSize: 10, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+        });
+      }
     });
   });
 
