@@ -3472,11 +3472,29 @@ def _extract_theme_from_pptx(pptx_path: str) -> dict:
     top_fill = [c for c, _ in fill_colors.most_common(6)]
     top_text = [c for c, _ in text_colors.most_common(4)]
 
-    # Build theme from extracted colors
-    primary = top_fill[0] if top_fill else "2AB8FC"
-    primary_dark = next((c for c in top_fill[1:] if c != primary), "324A6F")
-    accent = next((c for c in top_fill[2:] if c not in (primary, primary_dark)), "0C506F")
-    highlight = next((c for c in top_fill if c != primary and _is_warm_color(c)), "E67E22")
+    # Build theme from extracted colors (filter out grays/whites)
+    def _is_chromatic(c):
+        try:
+            r, g, b = int(c[:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+            # Filter out near-gray colors (low saturation)
+            max_c, min_c = max(r, g, b), min(r, g, b)
+            return (max_c - min_c) > 40  # Must have decent saturation
+        except Exception:
+            return False
+
+    chromatic = [c for c in top_fill if _is_chromatic(c)]
+    primary = chromatic[0] if chromatic else (top_fill[0] if top_fill else "2AB8FC")
+
+    def _is_dark(c):
+        try:
+            r, g, b = int(c[:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+            return (r + g + b) / 3 < 128
+        except:
+            return False
+
+    primary_dark = next((c for c in chromatic[1:] if _is_dark(c) and c != primary), "324A6F")
+    accent = next((c for c in chromatic if c not in (primary, primary_dark) and _is_dark(c)), "0C506F")
+    highlight = next((c for c in chromatic if c != primary and _is_warm_color(c)), "E67E22")
     text_dark = top_text[0] if top_text else "1A1A2E"
 
     return {

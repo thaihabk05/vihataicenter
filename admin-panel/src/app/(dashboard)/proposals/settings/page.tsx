@@ -1438,8 +1438,9 @@ function TemplatesTab() {
     try {
       const formData = new FormData();
       formData.append("file", file);
+      const baseUrl = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1").replace(/\/+$/, "");
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/proposals/legal-entities/${entityId}/upload-template`,
+        `${baseUrl}/proposals/legal-entities/${entityId}/upload-template`,
         { method: "POST", body: formData }
       );
       const data = await res.json();
