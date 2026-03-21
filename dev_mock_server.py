@@ -3076,7 +3076,7 @@ async def _run_web_import(task_id: str, url: str, dataset_id: str, knowledge_bas
         # Save as text file
         safe_name = re.sub(r'[^\w\s-]', '', title or "webpage").strip().replace(' ', '_')
         file_name = f"{safe_name}_{uuid.uuid4().hex[:6]}.txt"
-        file_path = UPLOADS_DIR / file_name
+        file_path = UPLOAD_DIR / file_name
         file_path.write_text(page_text, encoding="utf-8")
 
         # Send to Dify
