@@ -4595,17 +4595,29 @@ def _create_pptx_template_based(content: dict, output_path: Path, legal_entity: 
     if template_path and template_path.exists():
         try:
             from pptx import Presentation as PptxPres
+            from collections import Counter
             tprs = PptxPres(str(template_path))
+            header_fonts = Counter()
+            body_fonts = Counter()
             for slide in tprs.slides:
                 for shape in slide.shapes:
                     if shape.has_text_frame:
                         for p in shape.text_frame.paragraphs:
                             for r in p.runs:
                                 n = r.font.name or ""
-                                if "extrabold" in n.lower() or "black" in n.lower():
-                                    template_fonts["h"] = n
-                                elif n and "time" not in n.lower() and "symbol" not in n.lower():
-                                    template_fonts["b"] = n
+                                if not n or "time" in n.lower() or "symbol" in n.lower():
+                                    continue
+                                nl = n.lower()
+                                if "extrabold" in nl or "black" in nl or "heavy" in nl:
+                                    header_fonts[n] += 1
+                                elif "extralight" not in nl and "thin" not in nl:
+                                    # Regular, Medium, SemiBold, Light — good body fonts
+                                    body_fonts[n] += 1
+            if header_fonts:
+                template_fonts["h"] = header_fonts.most_common(1)[0][0]
+            if body_fonts:
+                template_fonts["b"] = body_fonts.most_common(1)[0][0]
+            print(f"[Proposal] Template fonts: h={template_fonts['h']}, b={template_fonts['b']}")
         except Exception as e:
             print(f"[Proposal] Font extraction error: {e}")
 

@@ -39,11 +39,11 @@ function addHeader(slide, pres, T, title) {
   slide.background = { color: T.bg };
   // Top accent line
   slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
-  // Header bar
+  // Header bar (always dark) — text always white for contrast
   slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0.06, w: SW, h: 0.8, fill: { color: T.primaryDark } });
   slide.addText(title.toUpperCase(), {
     x: 0.7, y: 0.12, w: 8.6, h: 0.65, margin: 0,
-    fontSize: 22, fontFace: F.h, color: T.text, bold: true,
+    fontSize: 22, fontFace: F.h, color: "FFFFFF", bold: true,
   });
 }
 
