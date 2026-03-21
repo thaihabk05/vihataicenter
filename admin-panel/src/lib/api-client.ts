@@ -153,6 +153,22 @@ export const solutionApi = {
   delete: (id: string) => apiClient.delete(`/solutions/${id}`),
 };
 
+// Sales Scripts
+export const salesScriptApi = {
+  generate: (data: {
+    customer_name: string;
+    website?: string;
+    tax_code?: string;
+    target_department: string;
+    products: string[];
+    notes?: string;
+  }) => apiClient.post('/sales-scripts/generate', data),
+  list: () => apiClient.get('/sales-scripts'),
+  get: (id: string) => apiClient.get(`/sales-scripts/${id}`),
+  update: (id: string, data: Record<string, string>) => apiClient.put(`/sales-scripts/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/sales-scripts/${id}`),
+};
+
 // Proposals
 export const proposalApi = {
   // Legacy products config (backward compat)

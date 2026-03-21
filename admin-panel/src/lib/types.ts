@@ -208,6 +208,24 @@ export interface LegalEntity {
   template: string;
 }
 
+export interface SalesScript {
+  id: string;
+  customer_name: string;
+  customer_website: string;
+  tax_code: string;
+  target_department: string;
+  products: string[];
+  notes: string;
+  company_analysis: string;
+  telesales_script: string;
+  email_template: string;
+  message_template: string;
+  status: 'generating' | 'completed' | 'error';
+  error?: string | null;
+  created_at: string;
+  created_by: string;
+}
+
 export interface Feedback {
   id: string;
   query_text: string;
