@@ -4220,21 +4220,20 @@ class CompanyLookupRequest(BaseModel):
     website: str = ""
     company_name: str = ""
 
-@app.post("/api/v1/proposals/lookup-company")
-async def lookup_company(req: CompanyLookupRequest):
-    """Lookup company info via tax code or website."""
-    info = {"company_name": req.company_name, "source": "manual"}
+async def _lookup_company_info(tax_code: str = "", website: str = "", company_name: str = "") -> dict:
+    """Reusable company lookup logic."""
+    info = {"company_name": company_name, "source": "manual"}
 
     # Try tax code lookup
-    if req.tax_code:
+    if tax_code:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"https://api.vietqr.io/v2/business/{req.tax_code}")
+                resp = await client.get(f"https://api.vietqr.io/v2/business/{tax_code}")
                 if resp.status_code == 200:
                     data = resp.json().get("data", {})
                     if data:
                         info.update({
-                            "company_name": data.get("name", req.company_name),
+                            "company_name": data.get("name", company_name),
                             "short_name": data.get("shortName", ""),
                             "address": data.get("address", ""),
                             "source": "tax_lookup",
@@ -4243,18 +4242,15 @@ async def lookup_company(req: CompanyLookupRequest):
             print(f"[CompanyLookup] Tax code lookup error: {e}")
 
     # Try website analysis via Claude
-    if req.website and ANTHROPIC_API_KEY:
+    if website and ANTHROPIC_API_KEY:
         try:
-            # Fetch website content
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-                web_resp = await client.get(req.website if req.website.startswith("http") else f"https://{req.website}")
+                web_resp = await client.get(website if website.startswith("http") else f"https://{website}")
                 if web_resp.status_code == 200:
-                    # Extract text (simple, first 3000 chars)
                     import re as _re
                     text = _re.sub(r'<[^>]+>', ' ', web_resp.text)
                     text = _re.sub(r'\s+', ' ', text)[:3000]
 
-                    # Ask Claude to analyze
                     ai_resp = await client.post(
                         "https://api.anthropic.com/v1/messages",
                         headers={
@@ -4266,12 +4262,11 @@ async def lookup_company(req: CompanyLookupRequest):
                             "model": "claude-sonnet-4-20250514",
                             "max_tokens": 500,
                             "system": "Bạn là trợ lý phân tích doanh nghiệp. Trích xuất thông tin từ nội dung website. Trả JSON: {\"industry\": \"ngành nghề\", \"description\": \"mô tả ngắn\", \"products_services\": \"sản phẩm/dịch vụ chính\", \"company_size_estimate\": \"ước tính quy mô\"}. Chỉ trả JSON, không giải thích.",
-                            "messages": [{"role": "user", "content": f"Website: {req.website}\n\nNội dung:\n{text}"}],
+                            "messages": [{"role": "user", "content": f"Website: {website}\n\nNội dung:\n{text}"}],
                         },
                     )
                     if ai_resp.status_code == 200:
                         ai_text = ai_resp.json()["content"][0]["text"].strip()
-                        # Try parse JSON
                         try:
                             parsed = json.loads(ai_text)
                             info["website_analysis"] = parsed
@@ -4282,6 +4277,16 @@ async def lookup_company(req: CompanyLookupRequest):
             print(f"[CompanyLookup] Website analysis error: {e}")
 
     return info
+
+
+@app.post("/api/v1/proposals/lookup-company")
+async def lookup_company(req: CompanyLookupRequest):
+    """Lookup company info via tax code or website."""
+    return await _lookup_company_info(
+        tax_code=req.tax_code,
+        website=req.website,
+        company_name=req.company_name,
+    )
 
 
 # --- Parse Brief with AI ---
@@ -4584,7 +4589,7 @@ def _fetch_customer_logo(website: str) -> str:
     logo_path = logo_dir / f"{domain.replace('.', '_')}.png"
 
     if logo_path.exists() and logo_path.stat().st_size > 100:
-        return str(logo_path)
+        return str(logo_path.resolve())
 
     # Try Google favicon API (high-res)
     try:
@@ -4595,7 +4600,7 @@ def _fetch_customer_logo(website: str) -> str:
         if len(data) > 100:
             logo_path.write_bytes(data)
             print(f"[Logo] Fetched logo for {domain}: {len(data)} bytes")
-            return str(logo_path)
+            return str(logo_path.resolve())
     except Exception as e:
         print(f"[Logo] Failed to fetch for {domain}: {e}")
     return ""
@@ -4619,7 +4624,7 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
     for ext in ["png", "jpg", "jpeg", "webp"]:
         p = logos_dir / f"{safe_cname}.{ext}"
         if p.exists() and p.stat().st_size > 100:
-            customer_logo = str(p)
+            customer_logo = str(p.resolve())
             break
     # Fallback: fetch from web
     if not customer_logo:
@@ -4630,10 +4635,10 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
     # Check for ViHAT/entity logo
     vihat_logo = ""
     assets_dir = Path(__file__).parent / "data" / "assets"
-    for logo_name in [f"logo_{legal_entity}.png", f"logo_{legal_entity}.jpg", "vihat_logo.png", "logo.png"]:
+    for logo_name in [f"logo_{legal_entity}.png", f"logo_{legal_entity}.jpg", f"logo_{legal_entity}.webp", "vihat_logo.png", "logo.png"]:
         p = assets_dir / logo_name
         if p.exists():
-            vihat_logo = str(p)
+            vihat_logo = str(p.resolve())
             break
 
     # Build input JSON for pptxgenjs script
@@ -4719,6 +4724,31 @@ def _create_pptx_template_based(content: dict, output_path: Path, legal_entity: 
     entities = _get_legal_entities()
     entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default"})
 
+    # Find customer logo (same logic as design version)
+    customer_name = content.get("customer_name", content.get("subtitle", ""))
+    customer_website = content.get("company_info", {}).get("website", "")
+    safe_cname = re.sub(r'[^\w]', '_', customer_name.lower().strip()) if customer_name else ""
+    logos_dir = Path(__file__).parent / "data" / "logos"
+    customer_logo = ""
+    for ext in ["png", "jpg", "jpeg", "webp"]:
+        p = logos_dir / f"{safe_cname}.{ext}"
+        if p.exists() and p.stat().st_size > 100:
+            customer_logo = str(p.resolve())
+            break
+    if not customer_logo:
+        if not customer_website:
+            customer_website = customer_name.lower().replace(" ", "") + ".com" if customer_name else ""
+        customer_logo = _fetch_customer_logo(customer_website)
+
+    # Check for ViHAT/entity logo
+    vihat_logo = ""
+    assets_dir = Path(__file__).parent / "data" / "assets"
+    for logo_name in [f"logo_{legal_entity}.png", f"logo_{legal_entity}.jpg", f"logo_{legal_entity}.webp", "vihat_logo.png", "logo.png"]:
+        p = assets_dir / logo_name
+        if p.exists():
+            vihat_logo = str(p.resolve())
+            break
+
     # Build pptxgenjs input with template font override
     pptx_data = {
         "customer_name": content.get("customer_name", content.get("subtitle", "")),
@@ -4727,6 +4757,9 @@ def _create_pptx_template_based(content: dict, output_path: Path, legal_entity: 
         "cover_title": content.get("cover_title", content.get("title", "GIẢI PHÁP")),
         "cover_subtitle": content.get("cover_subtitle", ""),
         "sections": content.get("sections", []),
+        "customer_logo": customer_logo,
+        "vihat_logo": vihat_logo,
+        "customer_website": customer_website,
         # Override fonts from template
         "font_override": {
             "h": template_fonts["h"],
@@ -4974,6 +5007,258 @@ async def download_proposal(task_id: str, file: str = ""):
         filename=task.get("file_name", f"proposal.{task['output_format']}"),
         media_type=media_types.get(task["output_format"], "application/octet-stream"),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ─── SALES SCRIPTS ────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════════
+
+SALES_SCRIPTS: dict = {}  # script_id -> script dict
+SALES_SCRIPTS_PATH = Path(__file__).parent / "data" / "sales_scripts.json"
+
+
+def _load_sales_scripts():
+    """Load sales scripts from JSON file."""
+    global SALES_SCRIPTS
+    if SALES_SCRIPTS_PATH.exists():
+        try:
+            SALES_SCRIPTS = json.loads(SALES_SCRIPTS_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            SALES_SCRIPTS = {}
+
+
+def _save_sales_scripts():
+    """Persist sales scripts to JSON file."""
+    try:
+        SALES_SCRIPTS_PATH.write_text(
+            json.dumps(SALES_SCRIPTS, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        print(f"[SalesScripts] Save error: {e}")
+
+
+_load_sales_scripts()
+
+
+class SalesScriptGenerateRequest(BaseModel):
+    customer_name: str
+    website: str = ""
+    tax_code: str = ""
+    target_department: str = "Giám đốc/CEO"
+    products: list = []
+    notes: str = ""
+
+
+async def _generate_sales_scripts(script_id: str):
+    """Background worker for sales script generation."""
+    script = SALES_SCRIPTS[script_id]
+    try:
+        script["status"] = "generating"
+        _save_sales_scripts()
+
+        # Phase 1: Analyze company (reuse lookup logic)
+        company_info = {}
+        if script.get("customer_website") or script.get("tax_code"):
+            try:
+                company_info = await _lookup_company_info(
+                    tax_code=script.get("tax_code", ""),
+                    website=script.get("customer_website", ""),
+                    company_name=script.get("customer_name", ""),
+                )
+            except Exception as e:
+                print(f"[SalesScripts] Company lookup error: {e}")
+
+        company_analysis_text = json.dumps(company_info, ensure_ascii=False) if company_info else "Không có thông tin"
+
+        # Gather product details
+        selected_slugs = set(script.get("products", []))
+        resolved_product_ids = set()
+        selected_solution_names = []
+        for s in SOLUTIONS.values():
+            if s["slug"] in selected_slugs and s.get("status") == "active":
+                resolved_product_ids.add(s.get("product_id", ""))
+                selected_solution_names.append(s["name"])
+        for p in PRODUCTS.values():
+            if p.get("status") == "active" and (p["slug"] in selected_slugs or p["name"] in selected_slugs):
+                resolved_product_ids.add(p["id"])
+        rich_products = [p for p in PRODUCTS.values()
+                         if p["id"] in resolved_product_ids and p.get("status") == "active"]
+
+        products_detail = ""
+        for p in rich_products:
+            products_detail += f"""
+### {p['name']} ({p['slug']})
+- Mô tả: {p.get('full_description', p.get('short_description', ''))}
+- Tính năng chính: {', '.join(p.get('features', [])[:5])}
+- Use cases: {', '.join(p.get('use_cases', [])[:3])}
+- Giá: {p.get('pricing_model', 'Liên hệ')}
+- Điểm mạnh: {', '.join(p.get('competitive_advantages', [])[:3])}
+"""
+
+        if not products_detail.strip():
+            # Fallback: list all active products briefly
+            all_active = [p for p in PRODUCTS.values() if p.get("status") == "active"]
+            products_detail = "\n".join([f"- {p['name']}: {p.get('short_description', '')}" for p in all_active[:5]])
+
+        # Get tenant info
+        tenant = TENANTS.get(DEFAULT_TENANT_ID, {})
+        company_name = tenant.get("name", "ViHAT Group")
+
+        # Phase 2: Generate scripts with Claude
+        prompt = f"""Bạn là chuyên gia sales CPaaS & Contact Center tại {company_name}. Hãy tạo bộ kịch bản sales để tiếp cận khách hàng tiềm năng.
+
+=== THÔNG TIN KHÁCH HÀNG ===
+- Tên công ty: {script['customer_name']}
+- Website: {script.get('customer_website', 'N/A')}
+- MST: {script.get('tax_code', 'N/A')}
+- Phòng ban/Vai trò tiếp cận: {script['target_department']}
+
+=== PHÂN TÍCH CÔNG TY ===
+{company_analysis_text}
+
+=== SẢN PHẨM ĐỀ XUẤT ===
+{products_detail}
+
+=== GHI CHÚ TỪ SALES ===
+{script.get('notes', 'Không có')}
+
+Hãy tạo 3 kịch bản tiếp cận khách hàng, trả về JSON với format:
+{{
+  "company_analysis": "Phân tích ngắn gọn về công ty: ngành nghề, quy mô ước tính, pain points liên quan đến CSKH/tổng đài, cơ hội bán hàng (3-5 câu)",
+  "telesales_script": "Kịch bản gọi điện telesales đầy đủ bao gồm:\\n\\n**LỜI MỞ ĐẦU:**\\n...\\n\\n**GIỚI THIỆU:**\\n...\\n\\n**CÂU HỎI KHÁM PHÁ NHU CẦU:**\\n...\\n\\n**TRÌNH BÀY GIẢI PHÁP:**\\n...\\n\\n**XỬ LÝ TỪ CHỐI:**\\n- Khi KH nói 'Chúng tôi đã có tổng đài rồi': ...\\n- Khi KH nói 'Gửi email cho tôi': ...\\n- Khi KH nói 'Không có nhu cầu': ...\\n- Khi KH nói 'Để tôi suy nghĩ': ...\\n\\n**ĐỀ XUẤT BƯỚC TIẾP THEO:**\\n...\\n\\n**KẾT THÚC:**\\n...",
+  "email_template": "**Subject line 1:** ...\\n**Subject line 2:** ...\\n**Subject line 3:** ...\\n\\n---\\n\\n**Nội dung email:**\\n\\nKính gửi [Chức vụ] [Tên],\\n\\n...\\n\\nTrân trọng,\\n[Tên Sales]\\n{company_name}",
+  "message_template": "Tin nhắn Zalo/SMS ngắn gọn, thân thiện, trực tiếp, bao gồm:\\n- Lời chào\\n- Giới thiệu ngắn\\n- Giá trị cốt lõi (1-2 câu)\\n- CTA rõ ràng"
+}}
+
+YÊU CẦU:
+- Kịch bản phải CỤ THỂ cho ngành của khách hàng và vai trò {script['target_department']}
+- Telesales script phải đủ chi tiết để sales mới cũng follow được
+- Phải có ít nhất 4 tình huống xử lý từ chối trong telesales
+- Email phải có đúng 3 subject line options
+- Tin nhắn Zalo/SMS phải ngắn dưới 500 ký tự
+- Tất cả phải viết bằng tiếng Việt, giọng chuyên nghiệp nhưng thân thiện
+- Liên kết cụ thể với sản phẩm {company_name} và tính năng nổi bật
+- Chỉ trả về JSON, không thêm text khác"""
+
+        if not ANTHROPIC_API_KEY:
+            raise Exception("ANTHROPIC_API_KEY not configured")
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 6000,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+            if resp.status_code != 200:
+                raise Exception(f"Claude API error: {resp.status_code} - {resp.text[:200]}")
+
+            text = resp.json()["content"][0]["text"].strip()
+            if "```" in text:
+                text = text.split("```")[1]
+                if text.startswith("json"):
+                    text = text[4:]
+                text = text.strip()
+            result = json.loads(text)
+
+        script["company_analysis"] = result.get("company_analysis", "")
+        script["telesales_script"] = result.get("telesales_script", "")
+        script["email_template"] = result.get("email_template", "")
+        script["message_template"] = result.get("message_template", "")
+        script["status"] = "completed"
+        _save_sales_scripts()
+        print(f"[SalesScripts] Script {script_id} completed")
+
+    except Exception as e:
+        import traceback
+        error_detail = f"{type(e).__name__}: {e}"
+        traceback_str = traceback.format_exc()
+        script["status"] = "error"
+        script["error"] = error_detail
+        _save_sales_scripts()
+        print(f"[SalesScripts] Script {script_id} error: {error_detail}\n{traceback_str}")
+
+
+@app.post("/api/v1/sales-scripts/generate")
+async def generate_sales_script(req: SalesScriptGenerateRequest):
+    """Start async sales script generation."""
+    if not req.customer_name.strip():
+        raise HTTPException(400, "Tên khách hàng là bắt buộc")
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
+
+    script_id = str(uuid.uuid4())[:8]
+    SALES_SCRIPTS[script_id] = {
+        "id": script_id,
+        "customer_name": req.customer_name.strip(),
+        "customer_website": req.website.strip(),
+        "tax_code": req.tax_code.strip(),
+        "target_department": req.target_department,
+        "products": req.products,
+        "notes": req.notes.strip(),
+        "company_analysis": "",
+        "telesales_script": "",
+        "email_template": "",
+        "message_template": "",
+        "status": "generating",
+        "error": None,
+        "created_at": datetime.now().isoformat(),
+        "created_by": "admin",
+    }
+
+    _save_sales_scripts()
+    asyncio.create_task(_generate_sales_scripts(script_id))
+
+    return {"id": script_id, "status": "generating", "message": "Đang tạo kịch bản sales..."}
+
+
+@app.get("/api/v1/sales-scripts")
+async def list_sales_scripts():
+    """List all sales scripts."""
+    scripts = sorted(SALES_SCRIPTS.values(), key=lambda s: s.get("created_at", ""), reverse=True)
+    return scripts
+
+
+@app.get("/api/v1/sales-scripts/{script_id}")
+async def get_sales_script(script_id: str):
+    """Get a single sales script by ID."""
+    script = SALES_SCRIPTS.get(script_id)
+    if not script:
+        raise HTTPException(404, "Script not found")
+    return script
+
+
+@app.put("/api/v1/sales-scripts/{script_id}")
+async def update_sales_script(script_id: str, body: dict):
+    """Update/edit a sales script."""
+    script = SALES_SCRIPTS.get(script_id)
+    if not script:
+        raise HTTPException(404, "Script not found")
+    # Allow editing specific fields
+    editable = ["telesales_script", "email_template", "message_template", "company_analysis", "notes"]
+    for key in editable:
+        if key in body:
+            script[key] = body[key]
+    _save_sales_scripts()
+    return script
+
+
+@app.delete("/api/v1/sales-scripts/{script_id}")
+async def delete_sales_script(script_id: str):
+    """Delete a sales script."""
+    if script_id not in SALES_SCRIPTS:
+        raise HTTPException(404, "Script not found")
+    del SALES_SCRIPTS[script_id]
+    _save_sales_scripts()
+    return {"ok": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

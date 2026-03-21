@@ -1010,6 +1010,11 @@ async function main() {
   const entityLabel = data.legal_entity_label || "ViHAT Group";
   const entityId = data.legal_entity_id || "default";
 
+  // IMPORTANT: Reset fonts to defaults at the start of each run.
+  // Without this, if the process is reused (e.g., template-based call sets
+  // Be Vietnam Pro, then design call in the same process inherits those fonts).
+  F = { h: "Arial Black", b: "Arial" };
+
   // Load custom themes from data/themes.json (extracted from uploaded templates)
   let customThemes = {};
   const themesPath = path.join(__dirname, "..", "data", "themes.json");
