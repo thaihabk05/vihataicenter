@@ -2,652 +2,575 @@
 /**
  * Generate professional proposal PPTX using pptxgenjs
  * Usage: node generate_proposal_pptx.js <input.json> <output.pptx>
- *
- * Input JSON structure: { sections: [...], customer_name, legal_entity_label }
  */
 const pptxgen = require("pptxgenjs");
 const fs = require("fs");
-const path = require("path");
 
-// ── Design System (ViHAT Brand) ──
-const C = {
-  navyDark: "0D2F4F",
-  navy: "1B4F72",
-  navyLight: "2C6FA0",
-  orange: "E67E22",
-  orangeLight: "F5D5A0",
-  teal: "17A2B8",
-  green: "28A745",
-  red: "E74C3C",
-  textDark: "1A1A2E",
-  textBody: "4A4A5A",
-  textMuted: "6C757D",
-  textLight: "AEB6BF",
-  white: "FFFFFF",
-  offWhite: "F8F9FA",
-  lightGray: "E9ECEF",
-  cardBg: "FFFFFF",
-  bgLight: "F0F4F8",
+// ── Brand Themes (per legal entity) ──
+const THEMES = {
+  vihat_solutions: {
+    primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
+    highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
+    bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
+    text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
+  },
+  vihat_group: {
+    primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
+    highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
+    bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
+    text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
+  },
+  omijsc: {
+    primary: "00C0FF", primaryDark: "1A619B", accent: "004E7A",
+    highlight: "FFE599", success: "28A745", danger: "E74C3C", teal: "00C0FF",
+    bg: "0A1628", bgCard: "132238", bgLight: "EBF6FF",
+    text: "FFFFFF", textBody: "C0D0E0", textMuted: "7890A0",
+  },
+  default: {
+    primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
+    highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
+    bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
+    text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
+  },
 };
 
-const FONT = { heading: "Arial Black", body: "Arial" };
-const SW = 10; // slide width
-const SH = 5.625; // slide height
+const F = { h: "Arial Black", b: "Arial" };
+const SW = 10, SH = 5.625;
+const shadow = () => ({ type: "outer", blur: 6, offset: 2, angle: 135, color: "000000", opacity: 0.15 });
 
-// ── Helpers ──
-const shadow = () => ({
-  type: "outer", blur: 6, offset: 2, angle: 135,
-  color: "000000", opacity: 0.12,
-});
-
-function footer(slide, entityLabel, slideNum, totalSlides) {
-  slide.addText(`${entityLabel}  |  Confidential`, {
-    x: 0.5, y: SH - 0.4, w: 5, h: 0.3,
-    fontSize: 8, fontFace: FONT.body, color: C.textMuted,
-  });
-  slide.addText(`${slideNum} / ${totalSlides}`, {
-    x: SW - 1.5, y: SH - 0.4, w: 1, h: 0.3,
-    fontSize: 8, fontFace: FONT.body, color: C.textMuted, align: "right",
-  });
-}
-
-// ── Slide Builders ──
-
-function slideCover(pres, data) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.navyDark };
-
-  // Decorative accent bar at top
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.06, fill: { color: C.orange },
-  });
-
-  // Main title
-  slide.addText(data.title || "GIẢI PHÁP", {
-    x: 0.8, y: 1.0, w: 8.4, h: 1.0,
-    fontSize: 40, fontFace: FONT.heading, color: C.white, bold: true,
-  });
-
-  // Subtitle
-  slide.addText(data.subtitle || "", {
-    x: 0.8, y: 2.0, w: 8.4, h: 0.8,
-    fontSize: 22, fontFace: FONT.body, color: C.orange,
-  });
-
-  // Customer name
-  slide.addText(data.customer || "", {
-    x: 0.8, y: 2.8, w: 8.4, h: 0.6,
-    fontSize: 18, fontFace: FONT.body, color: C.textLight,
-  });
-
-  // Bottom bar
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: SH - 0.5, w: SW, h: 0.5, fill: { color: C.navy },
-  });
-  slide.addText(data.entity_label || "ViHAT Group", {
-    x: 0.8, y: SH - 0.45, w: 5, h: 0.4,
-    fontSize: 10, fontFace: FONT.body, color: C.textLight,
-  });
-  slide.addText(data.date || new Date().toLocaleDateString("vi-VN"), {
-    x: SW - 3, y: SH - 0.45, w: 2.2, h: 0.4,
-    fontSize: 10, fontFace: FONT.body, color: C.textLight, align: "right",
-  });
-}
-
-function slideSectionHeader(pres, title, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.navyDark };
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.06, fill: { color: C.orange },
-  });
-  slide.addText(title.toUpperCase(), {
-    x: 1, y: 1.8, w: 8, h: 1.5,
-    fontSize: 36, fontFace: FONT.heading, color: C.white, bold: true,
-  });
-  footer(slide, entityLabel, slideNum, total);
-}
-
-function slideBullets(pres, title, items, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
-
+// ── Slide Header (reused) ──
+function addHeader(slide, pres, T, title) {
+  slide.background = { color: T.bg };
+  // Top accent line
+  slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
   // Header bar
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
-  });
+  slide.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0.06, w: SW, h: 0.8, fill: { color: T.primaryDark } });
   slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
+    x: 0.7, y: 0.12, w: 8.6, h: 0.65, margin: 0,
+    fontSize: 22, fontFace: F.h, color: T.text, bold: true,
   });
-
-  // Bullets as text
-  const bulletItems = items.map((item, i) => ({
-    text: String(item),
-    options: { bullet: true, breakLine: i < items.length - 1, indentLevel: 0 },
-  }));
-
-  slide.addText(bulletItems, {
-    x: 0.8, y: 1.2, w: 8.4, h: 3.8,
-    fontSize: 14, fontFace: FONT.body, color: C.textDark,
-    paraSpaceAfter: 8, valign: "top",
-  });
-
-  footer(slide, entityLabel, slideNum, total);
 }
 
-function slideCards(pres, title, cards, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
-
-  // Header
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
+function addFooter(slide, T, label, num, total) {
+  slide.addText(`${label}  |  Confidential`, {
+    x: 0.5, y: SH - 0.35, w: 5, h: 0.25, fontSize: 7, fontFace: F.b, color: T.textMuted, margin: 0,
   });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
+  slide.addText(`${num} / ${total}`, {
+    x: SW - 1.5, y: SH - 0.35, w: 1, h: 0.25, fontSize: 7, fontFace: F.b, color: T.textMuted, align: "right", margin: 0,
   });
-  slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
-  });
-
-  // Cards layout (2x2 grid)
-  const cardW = 4.0;
-  const cardH = 1.85;
-  const gap = 0.3;
-  const startX = (SW - 2 * cardW - gap) / 2;
-  const startY = 1.15;
-  const accentColors = [C.orange, C.teal, C.green, C.red];
-
-  cards.slice(0, 4).forEach((card, i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const cx = startX + col * (cardW + gap);
-    const cy = startY + row * (cardH + gap);
-    const accent = accentColors[i % accentColors.length];
-
-    // Card background
-    slide.addShape(pres.shapes.RECTANGLE, {
-      x: cx, y: cy, w: cardW, h: cardH,
-      fill: { color: C.cardBg }, shadow: shadow(),
-    });
-    // Left accent bar
-    slide.addShape(pres.shapes.RECTANGLE, {
-      x: cx, y: cy, w: 0.06, h: cardH,
-      fill: { color: accent },
-    });
-
-    // Card title
-    const cardTitle = typeof card === "string" ? card : (card.title || card.heading || "");
-    const cardBody = typeof card === "string" ? "" : (card.body || card.description || card.content || "");
-    const cardImpact = typeof card === "string" ? "" : (card.impact || card.stat || "");
-
-    slide.addText(cardTitle, {
-      x: cx + 0.25, y: cy + 0.15, w: cardW - 0.4, h: 0.45,
-      fontSize: 13, fontFace: FONT.heading, color: C.navy, bold: true,
-      valign: "top", margin: 0,
-    });
-
-    if (cardBody) {
-      slide.addText(String(cardBody), {
-        x: cx + 0.25, y: cy + 0.6, w: cardW - 0.4, h: 0.7,
-        fontSize: 10, fontFace: FONT.body, color: C.textMuted,
-        valign: "top", margin: 0,
-      });
-    }
-
-    if (cardImpact) {
-      // Impact badge
-      slide.addShape(pres.shapes.RECTANGLE, {
-        x: cx + 0.2, y: cy + cardH - 0.4, w: cardW - 0.4, h: 0.28,
-        fill: { color: "FDE8E8" },
-      });
-      slide.addText(String(cardImpact), {
-        x: cx + 0.25, y: cy + cardH - 0.38, w: cardW - 0.5, h: 0.24,
-        fontSize: 9, fontFace: FONT.body, color: C.red, bold: true, margin: 0,
-      });
-    }
-  });
-
-  footer(slide, entityLabel, slideNum, total);
 }
 
-function slideStats(pres, title, stats, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
-
-  // Header
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
+// ── SLIDE: Cover ──
+function slideCover(pres, T, data) {
+  const s = pres.addSlide();
+  s.background = { color: T.bg };
+  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
+  s.addText(data.title || "GIẢI PHÁP", {
+    x: 0.8, y: 1.0, w: 8.4, h: 1.0, fontSize: 40, fontFace: F.h, color: T.text, bold: true, margin: 0,
   });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
+  s.addText(data.subtitle || "", {
+    x: 0.8, y: 2.1, w: 8.4, h: 0.7, fontSize: 22, fontFace: F.b, color: T.highlight, margin: 0,
   });
-  slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
+  s.addText(data.customer || "", {
+    x: 0.8, y: 2.8, w: 8.4, h: 0.5, fontSize: 18, fontFace: F.b, color: T.textBody, margin: 0,
   });
-
-  // Stats in a row
-  const count = Math.min(stats.length, 4);
-  const statW = (SW - 1.6 - (count - 1) * 0.3) / count;
-  const accentColors = [C.navy, C.orange, C.teal, C.green];
-
-  stats.slice(0, 4).forEach((stat, i) => {
-    const sx = 0.8 + i * (statW + 0.3);
-    const color = accentColors[i % accentColors.length];
-
-    // Stat card
-    slide.addShape(pres.shapes.RECTANGLE, {
-      x: sx, y: 1.2, w: statW, h: 2.0,
-      fill: { color: C.cardBg }, shadow: shadow(),
-    });
-
-    const statValue = typeof stat === "string" ? stat : (stat.value || stat.number || "");
-    const statLabel = typeof stat === "string" ? "" : (stat.label || stat.title || "");
-    const statDesc = typeof stat === "string" ? "" : (stat.description || "");
-
-    // Big number
-    slide.addText(String(statValue), {
-      x: sx, y: 1.35, w: statW, h: 0.8,
-      fontSize: 36, fontFace: FONT.heading, color: color,
-      align: "center", bold: true, margin: 0,
-    });
-    // Label
-    if (statLabel) {
-      slide.addText(String(statLabel), {
-        x: sx + 0.15, y: 2.15, w: statW - 0.3, h: 0.35,
-        fontSize: 11, fontFace: FONT.body, color: C.textDark,
-        align: "center", bold: true, margin: 0,
-      });
-    }
-    // Description
-    if (statDesc) {
-      slide.addText(String(statDesc), {
-        x: sx + 0.15, y: 2.5, w: statW - 0.3, h: 0.5,
-        fontSize: 9, fontFace: FONT.body, color: C.textMuted,
-        align: "center", margin: 0,
-      });
-    }
+  // Bottom bar
+  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: SH - 0.5, w: SW, h: 0.5, fill: { color: T.accent } });
+  s.addText(data.entity_label || "", {
+    x: 0.8, y: SH - 0.45, w: 4, h: 0.35, fontSize: 10, fontFace: F.b, color: T.textBody, margin: 0,
   });
-
-  footer(slide, entityLabel, slideNum, total);
+  const dateStr = new Date().toLocaleDateString("vi-VN");
+  s.addText(dateStr, {
+    x: SW - 3, y: SH - 0.45, w: 2.2, h: 0.35, fontSize: 10, fontFace: F.b, color: T.textBody, align: "right", margin: 0,
+  });
 }
 
-function slideTable(pres, title, tableData, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
+// ── SLIDE: Executive Summary (3 columns: Problem → Solution → Results) ──
+function slideExecSummary(pres, T, title, content, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
 
-  // Header
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
-  });
-  slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
-  });
+  // Parse content — expect {problem:[], solution:[], results:[], recommendation:""}
+  // Or fallback to plain text
+  let problem = [], solution = [], results = [], recommendation = "";
 
-  if (!tableData || tableData.length === 0) {
-    footer(slide, entityLabel, slideNum, total);
+  if (typeof content === "object" && !Array.isArray(content)) {
+    problem = content.problem || content.problems || [];
+    solution = content.solution || content.solutions || [];
+    results = content.results || content.expected_results || [];
+    recommendation = content.recommendation || content.summary || "";
+  } else if (typeof content === "string") {
+    // Fallback: show as text card
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 0.7, y: 1.1, w: 8.6, h: 3.5, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+    s.addText(content, {
+      x: 1.0, y: 1.3, w: 8.0, h: 3.1, fontSize: 13, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+    });
+    addFooter(s, T, label, num, total);
     return;
   }
 
-  const rows = tableData.map((row, ri) => {
-    return row.map((cell) => ({
+  const colW = 2.7, gap = 0.2, startX = 0.7, startY = 1.1;
+  const colColors = [T.danger, T.teal, T.success];
+  const colHeaders = ["VẤN ĐỀ", "GIẢI PHÁP", "KẾT QUẢ KỲ VỌNG"];
+  const colData = [problem, solution, results];
+
+  colData.forEach((items, ci) => {
+    const cx = startX + ci * (colW + gap);
+    // Column card bg
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx, y: startY, w: colW, h: 3.4, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+    // Column header badge
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx + 0.15, y: startY + 0.15, w: colW - 0.3, h: 0.4, fill: { color: colColors[ci] },
+    });
+    s.addText(colHeaders[ci], {
+      x: cx + 0.15, y: startY + 0.17, w: colW - 0.3, h: 0.36,
+      fontSize: 11, fontFace: F.h, color: T.text, bold: true, align: "center", margin: 0,
+    });
+
+    // Items with bullet circles
+    (items || []).slice(0, 4).forEach((item, ii) => {
+      const iy = startY + 0.7 + ii * 0.65;
+      // Checkmark circle
+      s.addShape(pres.shapes.OVAL, {
+        x: cx + 0.15, y: iy, w: 0.22, h: 0.22, fill: { color: colColors[ci] },
+      });
+      s.addText("✓", {
+        x: cx + 0.15, y: iy - 0.02, w: 0.22, h: 0.24,
+        fontSize: 8, fontFace: F.b, color: T.text, align: "center", valign: "middle", margin: 0,
+      });
+      // Item text
+      s.addText(String(item), {
+        x: cx + 0.45, y: iy - 0.05, w: colW - 0.65, h: 0.55,
+        fontSize: 9, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+      });
+    });
+
+    // Arrows between columns
+    if (ci < 2) {
+      const ax = cx + colW + 0.02;
+      s.addText("→", {
+        x: ax, y: startY + 1.5, w: gap - 0.04, h: 0.4,
+        fontSize: 18, fontFace: F.b, color: T.highlight, align: "center", margin: 0,
+      });
+    }
+  });
+
+  // Bottom recommendation bar
+  if (recommendation) {
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 0.7, y: 4.65, w: 8.6, h: 0.45, fill: { color: T.highlight },
+    });
+    s.addText(String(recommendation), {
+      x: 0.85, y: 4.67, w: 8.3, h: 0.41,
+      fontSize: 10, fontFace: F.h, color: T.text, align: "center", valign: "middle", margin: 0,
+    });
+  }
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Stats (big numbers) ──
+function slideStats(pres, T, title, stats, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  const count = Math.min(stats.length, 4);
+  const cardW = (8.6 - (count - 1) * 0.25) / count;
+  const accents = [T.primary, T.highlight, T.teal, T.success];
+
+  stats.slice(0, 4).forEach((stat, i) => {
+    const sx = 0.7 + i * (cardW + 0.25);
+    // Card
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: sx, y: 1.1, w: cardW, h: 3.5, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+    // Top accent
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: sx, y: 1.1, w: cardW, h: 0.05, fill: { color: accents[i % accents.length] },
+    });
+
+    const val = typeof stat === "string" ? stat : (stat.value || "");
+    const lbl = typeof stat === "string" ? "" : (stat.label || "");
+    const desc = typeof stat === "string" ? "" : (stat.description || "");
+
+    // Big value
+    s.addText(String(val), {
+      x: sx, y: 1.4, w: cardW, h: 1.0,
+      fontSize: 36, fontFace: F.h, color: accents[i % accents.length],
+      align: "center", bold: true, margin: 0,
+    });
+    // Label
+    if (lbl) {
+      s.addText(String(lbl), {
+        x: sx + 0.15, y: 2.4, w: cardW - 0.3, h: 0.4,
+        fontSize: 12, fontFace: F.h, color: T.text, align: "center", margin: 0,
+      });
+    }
+    // Description
+    if (desc) {
+      s.addText(String(desc), {
+        x: sx + 0.15, y: 2.85, w: cardW - 0.3, h: 0.6,
+        fontSize: 9, fontFace: F.b, color: T.textMuted, align: "center", margin: 0,
+      });
+    }
+  });
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Cards (2x2 with accent bars + impact badges) ──
+function slideCards(pres, T, title, cards, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  const cardW = 4.15, cardH = 1.85, gap = 0.3;
+  const startX = 0.7, startY = 1.1;
+  const accents = [T.highlight, T.teal, T.success, T.danger];
+
+  cards.slice(0, 4).forEach((card, i) => {
+    const col = i % 2, row = Math.floor(i / 2);
+    const cx = startX + col * (cardW + gap);
+    const cy = startY + row * (cardH + gap);
+    const accent = accents[i % accents.length];
+
+    // Card bg
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx, y: cy, w: cardW, h: cardH, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+    // Left accent bar
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx, y: cy, w: 0.06, h: cardH, fill: { color: accent },
+    });
+
+    const cTitle = typeof card === "string" ? card : (card.title || "");
+    const cBody = typeof card === "string" ? "" : (card.body || card.description || "");
+    const cImpact = typeof card === "string" ? "" : (card.impact || card.stat || "");
+
+    // Icon circle
+    s.addShape(pres.shapes.OVAL, {
+      x: cx + 0.2, y: cy + 0.15, w: 0.35, h: 0.35, fill: { color: accent },
+    });
+    s.addText("●", {
+      x: cx + 0.2, y: cy + 0.15, w: 0.35, h: 0.35,
+      fontSize: 10, color: T.text, align: "center", valign: "middle", margin: 0,
+    });
+
+    // Card title
+    s.addText(cTitle, {
+      x: cx + 0.65, y: cy + 0.12, w: cardW - 0.85, h: 0.45,
+      fontSize: 12, fontFace: F.h, color: T.text, bold: true, margin: 0, valign: "top",
+    });
+
+    // Body
+    if (cBody) {
+      s.addText(String(cBody), {
+        x: cx + 0.2, y: cy + 0.6, w: cardW - 0.4, h: 0.7,
+        fontSize: 9, fontFace: F.b, color: T.textMuted, margin: 0, valign: "top",
+      });
+    }
+
+    // Impact badge
+    if (cImpact) {
+      s.addShape(pres.shapes.RECTANGLE, {
+        x: cx + 0.15, y: cy + cardH - 0.38, w: cardW - 0.3, h: 0.28,
+        fill: { color: accent }, transparency: 80,
+      });
+      s.addText("⚠ " + String(cImpact), {
+        x: cx + 0.2, y: cy + cardH - 0.36, w: cardW - 0.4, h: 0.24,
+        fontSize: 8, fontFace: F.b, color: accent, bold: true, margin: 0,
+      });
+    }
+  });
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Bullets (concise) ──
+function slideBullets(pres, T, title, items, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  // Two-column card layout for bullets
+  const colW = 4.15, gap = 0.3;
+  const half = Math.ceil(items.length / 2);
+  const leftItems = items.slice(0, half);
+  const rightItems = items.slice(half);
+
+  [leftItems, rightItems].forEach((colItems, ci) => {
+    if (colItems.length === 0) return;
+    const cx = 0.7 + ci * (colW + gap);
+
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx, y: 1.1, w: colW, h: 3.8, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+
+    colItems.forEach((item, ii) => {
+      const iy = 1.25 + ii * 0.55;
+      // Bullet dot
+      s.addShape(pres.shapes.OVAL, {
+        x: cx + 0.2, y: iy + 0.05, w: 0.15, h: 0.15, fill: { color: T.primary },
+      });
+      s.addText(String(item), {
+        x: cx + 0.45, y: iy - 0.03, w: colW - 0.7, h: 0.5,
+        fontSize: 10, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+      });
+    });
+  });
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Text (paragraph in card) ──
+function slideText(pres, T, title, text, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.7, y: 1.1, w: 8.6, h: 3.8, fill: { color: T.bgCard }, shadow: shadow(),
+  });
+  s.addText(String(text), {
+    x: 1.0, y: 1.3, w: 8.0, h: 3.4,
+    fontSize: 12, fontFace: F.b, color: T.textBody, margin: 0, valign: "top", paraSpaceAfter: 8,
+  });
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Table ──
+function slideTable(pres, T, title, tableData, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  if (!tableData || !tableData.length) { addFooter(s, T, label, num, total); return; }
+
+  const cols = tableData[0].length;
+  const rows = tableData.map((row, ri) =>
+    row.map((cell) => ({
       text: String(cell),
       options: {
-        fontSize: ri === 0 ? 11 : 10,
-        fontFace: FONT.body,
-        color: ri === 0 ? C.white : C.textDark,
+        fontSize: ri === 0 ? 10 : 9, fontFace: F.b,
+        color: ri === 0 ? T.text : T.textBody,
         bold: ri === 0,
-        fill: { color: ri === 0 ? C.navy : (ri % 2 === 0 ? C.lightGray : C.white) },
-        border: { pt: 0.5, color: C.lightGray },
-        valign: "middle",
-        margin: [4, 6, 4, 6],
+        fill: { color: ri === 0 ? T.primaryDark : T.bgCard },
+        border: { pt: 0.5, color: T.bg },
+        valign: "middle", margin: [3, 5, 3, 5],
       },
-    }));
+    }))
+  );
+
+  s.addTable(rows, {
+    x: 0.7, y: 1.1, w: 8.6,
+    colW: Array(cols).fill(8.6 / cols),
   });
 
-  const cols = tableData[0] ? tableData[0].length : 2;
-  const colW = Array(cols).fill((SW - 1.6) / cols);
-
-  slide.addTable(rows, {
-    x: 0.8, y: 1.15, w: SW - 1.6,
-    colW: colW,
-    border: { pt: 0, color: C.lightGray },
-  });
-
-  footer(slide, entityLabel, slideNum, total);
+  addFooter(s, T, label, num, total);
 }
 
-function slideTwoColumn(pres, title, colData, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
+// ── SLIDE: Two Column ──
+function slideTwoCol(pres, T, title, colData, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
 
-  // Header
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
-  });
-  slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
-  });
+  const colW = 4.15, gap = 0.3;
+  const accents = [T.highlight, T.teal];
 
-  const colW = 4.0;
-  const gap = 0.4;
-  const startX = (SW - 2 * colW - gap) / 2;
-
-  // Left column card
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: startX, y: 1.15, w: colW, h: 3.8,
-    fill: { color: C.cardBg }, shadow: shadow(),
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: startX, y: 1.15, w: colW, h: 0.06, fill: { color: C.orange },
-  });
-
-  const leftTitle = colData.left_title || "";
-  const leftItems = colData.left_items || [];
-
-  slide.addText(leftTitle, {
-    x: startX + 0.25, y: 1.35, w: colW - 0.5, h: 0.4,
-    fontSize: 14, fontFace: FONT.heading, color: C.navy, bold: true, margin: 0,
-  });
-
-  if (leftItems.length > 0) {
-    const leftBullets = leftItems.map((item, i) => ({
-      text: String(item),
-      options: { bullet: true, breakLine: i < leftItems.length - 1 },
-    }));
-    slide.addText(leftBullets, {
-      x: startX + 0.25, y: 1.85, w: colW - 0.5, h: 2.9,
-      fontSize: 11, fontFace: FONT.body, color: C.textBody, paraSpaceAfter: 6, margin: 0,
+  ["left", "right"].forEach((side, ci) => {
+    const cx = 0.7 + ci * (colW + gap);
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx, y: 1.1, w: colW, h: 3.8, fill: { color: T.bgCard }, shadow: shadow(),
     });
-  }
-
-  // Right column card
-  const rx = startX + colW + gap;
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: rx, y: 1.15, w: colW, h: 3.8,
-    fill: { color: C.cardBg }, shadow: shadow(),
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: rx, y: 1.15, w: colW, h: 0.06, fill: { color: C.teal },
-  });
-
-  const rightTitle = colData.right_title || "";
-  const rightItems = colData.right_items || [];
-
-  slide.addText(rightTitle, {
-    x: rx + 0.25, y: 1.35, w: colW - 0.5, h: 0.4,
-    fontSize: 14, fontFace: FONT.heading, color: C.navy, bold: true, margin: 0,
-  });
-
-  if (rightItems.length > 0) {
-    const rightBullets = rightItems.map((item, i) => ({
-      text: String(item),
-      options: { bullet: true, breakLine: i < rightItems.length - 1 },
-    }));
-    slide.addText(rightBullets, {
-      x: rx + 0.25, y: 1.85, w: colW - 0.5, h: 2.9,
-      fontSize: 11, fontFace: FONT.body, color: C.textBody, paraSpaceAfter: 6, margin: 0,
+    // Top accent
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: cx, y: 1.1, w: colW, h: 0.05, fill: { color: accents[ci] },
     });
-  }
 
-  footer(slide, entityLabel, slideNum, total);
+    const colTitle = colData[`${side}_title`] || "";
+    const colItems = colData[`${side}_items`] || [];
+
+    s.addText(colTitle, {
+      x: cx + 0.2, y: 1.25, w: colW - 0.4, h: 0.35,
+      fontSize: 13, fontFace: F.h, color: accents[ci], bold: true, margin: 0,
+    });
+
+    colItems.slice(0, 6).forEach((item, ii) => {
+      const iy = 1.7 + ii * 0.5;
+      s.addShape(pres.shapes.OVAL, {
+        x: cx + 0.2, y: iy + 0.05, w: 0.15, h: 0.15, fill: { color: accents[ci] },
+      });
+      s.addText(String(item), {
+        x: cx + 0.45, y: iy - 0.02, w: colW - 0.7, h: 0.45,
+        fontSize: 9, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+      });
+    });
+  });
+
+  addFooter(s, T, label, num, total);
 }
 
-function slideText(pres, title, text, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
-
-  // Header
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
-  });
-  slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
-  });
-
-  // Content card
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0.8, y: 1.15, w: 8.4, h: 3.8,
-    fill: { color: C.cardBg }, shadow: shadow(),
-  });
-
-  slide.addText(String(text), {
-    x: 1.1, y: 1.35, w: 7.8, h: 3.4,
-    fontSize: 13, fontFace: FONT.body, color: C.textBody,
-    valign: "top", paraSpaceAfter: 8, margin: 0,
-  });
-
-  footer(slide, entityLabel, slideNum, total);
-}
-
-function slideTimeline(pres, title, phases, slideNum, total, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.offWhite };
-
-  // Header
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.9, fill: { color: C.navyDark },
-  });
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.9, w: SW, h: 0.04, fill: { color: C.orange },
-  });
-  slide.addText(title.toUpperCase(), {
-    x: 0.8, y: 0.15, w: 8.4, h: 0.6,
-    fontSize: 22, fontFace: FONT.heading, color: C.white, bold: true, margin: 0,
-  });
+// ── SLIDE: Timeline ──
+function slideTimeline(pres, T, title, phases, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
 
   const count = Math.min(phases.length, 5);
-  const phaseW = (SW - 1.6 - (count - 1) * 0.15) / count;
-  const accentColors = [C.navy, C.orange, C.teal, C.green, C.red];
+  const phW = (8.6 - (count - 1) * 0.15) / count;
+  const accents = [T.primary, T.highlight, T.teal, T.success, T.danger];
 
-  // Timeline connector line
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0.8, y: 2.0, w: SW - 1.6, h: 0.04, fill: { color: C.lightGray },
+  // Connector line
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.7, y: 1.95, w: 8.6, h: 0.03, fill: { color: T.textMuted },
   });
 
-  phases.slice(0, 5).forEach((phase, i) => {
-    const px = 0.8 + i * (phaseW + 0.15);
-    const color = accentColors[i % accentColors.length];
+  phases.slice(0, 5).forEach((ph, i) => {
+    const px = 0.7 + i * (phW + 0.15);
+    const ac = accents[i % accents.length];
 
-    // Circle number
-    slide.addShape(pres.shapes.OVAL, {
-      x: px + phaseW / 2 - 0.2, y: 1.75, w: 0.5, h: 0.5,
-      fill: { color: color },
+    // Number circle
+    s.addShape(pres.shapes.OVAL, {
+      x: px + phW / 2 - 0.2, y: 1.72, w: 0.45, h: 0.45, fill: { color: ac },
     });
-    slide.addText(String(i + 1), {
-      x: px + phaseW / 2 - 0.2, y: 1.78, w: 0.5, h: 0.45,
-      fontSize: 16, fontFace: FONT.heading, color: C.white,
-      align: "center", valign: "middle", bold: true, margin: 0,
+    s.addText(String(i + 1), {
+      x: px + phW / 2 - 0.2, y: 1.74, w: 0.45, h: 0.42,
+      fontSize: 16, fontFace: F.h, color: T.text, align: "center", valign: "middle", bold: true, margin: 0,
     });
 
     // Phase card
-    slide.addShape(pres.shapes.RECTANGLE, {
-      x: px, y: 2.5, w: phaseW, h: 2.3,
-      fill: { color: C.cardBg }, shadow: shadow(),
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: px, y: 2.4, w: phW, h: 2.5, fill: { color: T.bgCard }, shadow: shadow(),
     });
-    slide.addShape(pres.shapes.RECTANGLE, {
-      x: px, y: 2.5, w: phaseW, h: 0.05, fill: { color: color },
-    });
-
-    const phaseName = typeof phase === "string" ? phase : (phase.name || phase.title || `Phase ${i + 1}`);
-    const phaseDesc = typeof phase === "string" ? "" : (phase.description || phase.tasks || phase.content || "");
-    const phaseDuration = typeof phase === "string" ? "" : (phase.duration || phase.time || "");
-
-    slide.addText(phaseName, {
-      x: px + 0.1, y: 2.65, w: phaseW - 0.2, h: 0.4,
-      fontSize: 10, fontFace: FONT.heading, color: color, bold: true,
-      align: "center", margin: 0,
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: px, y: 2.4, w: phW, h: 0.04, fill: { color: ac },
     });
 
-    if (phaseDuration) {
-      slide.addText(String(phaseDuration), {
-        x: px + 0.1, y: 3.0, w: phaseW - 0.2, h: 0.25,
-        fontSize: 8, fontFace: FONT.body, color: C.textMuted,
-        align: "center", italic: true, margin: 0,
+    const name = typeof ph === "string" ? ph : (ph.name || ph.title || `Phase ${i + 1}`);
+    const dur = typeof ph === "string" ? "" : (ph.duration || "");
+    const desc = typeof ph === "string" ? "" : (ph.description || "");
+
+    s.addText(name, {
+      x: px + 0.08, y: 2.55, w: phW - 0.16, h: 0.35,
+      fontSize: 10, fontFace: F.h, color: ac, bold: true, align: "center", margin: 0,
+    });
+    if (dur) {
+      s.addText(String(dur), {
+        x: px + 0.08, y: 2.9, w: phW - 0.16, h: 0.2,
+        fontSize: 8, fontFace: F.b, color: T.textMuted, align: "center", italic: true, margin: 0,
       });
     }
-
-    if (phaseDesc) {
-      const descText = Array.isArray(phaseDesc) ? phaseDesc.join("\n") : String(phaseDesc);
-      slide.addText(descText, {
-        x: px + 0.1, y: 3.3, w: phaseW - 0.2, h: 1.3,
-        fontSize: 8, fontFace: FONT.body, color: C.textBody,
-        valign: "top", margin: 0,
+    if (desc) {
+      s.addText(Array.isArray(desc) ? desc.join("\n") : String(desc), {
+        x: px + 0.08, y: 3.15, w: phW - 0.16, h: 1.55,
+        fontSize: 8, fontFace: F.b, color: T.textBody, valign: "top", margin: 0,
       });
     }
   });
 
-  footer(slide, entityLabel, slideNum, total);
+  addFooter(s, T, label, num, total);
 }
 
-function slideClosing(pres, entityLabel) {
-  const slide = pres.addSlide();
-  slide.background = { color: C.navyDark };
-  slide.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: SW, h: 0.06, fill: { color: C.orange },
-  });
+// ── SLIDE: Closing ──
+function slideClosing(pres, T, label) {
+  const s = pres.addSlide();
+  s.background = { color: T.bg };
+  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
 
-  slide.addText("CẢM ƠN QUÝ KHÁCH", {
+  s.addText("CẢM ƠN QUÝ KHÁCH", {
     x: 1, y: 1.2, w: 8, h: 1.0,
-    fontSize: 36, fontFace: FONT.heading, color: C.white, bold: true,
-    align: "center",
+    fontSize: 36, fontFace: F.h, color: T.text, bold: true, align: "center",
   });
-
-  slide.addText([
-    { text: entityLabel || "ViHAT Group", options: { bold: true, breakLine: true, fontSize: 16 } },
+  s.addText([
+    { text: label || "ViHAT Group", options: { bold: true, breakLine: true, fontSize: 16 } },
     { text: "Website: vihat.vn  |  Hotline: 1900 6181", options: { breakLine: true, fontSize: 13 } },
     { text: "Email: info@vihat.vn", options: { fontSize: 13 } },
   ], {
-    x: 1, y: 2.5, w: 8, h: 1.5,
-    fontFace: FONT.body, color: C.textLight, align: "center",
+    x: 1, y: 2.5, w: 8, h: 1.5, fontFace: F.b, color: T.textBody, align: "center",
   });
 }
 
 // ── Main ──
-
 async function main() {
   const inputPath = process.argv[2];
   const outputPath = process.argv[3];
-
-  if (!inputPath || !outputPath) {
-    console.error("Usage: node generate_proposal_pptx.js <input.json> <output.pptx>");
-    process.exit(1);
-  }
+  if (!inputPath || !outputPath) { console.error("Usage: node generate_proposal_pptx.js <input.json> <output.pptx>"); process.exit(1); }
 
   const data = JSON.parse(fs.readFileSync(inputPath, "utf-8"));
   const sections = data.sections || [];
   const entityLabel = data.legal_entity_label || "ViHAT Group";
-  const customerName = data.customer_name || "";
+  const entityId = data.legal_entity_id || "default";
+  const T = THEMES[entityId] || THEMES.default;
 
   const pres = new pptxgen();
   pres.layout = "LAYOUT_16x9";
   pres.author = entityLabel;
-  pres.title = `Proposal cho ${customerName}`;
+  pres.title = `Proposal cho ${data.customer_name || ""}`;
 
-  // Count total slides for footer
-  let totalSlides = 2; // cover + closing
+  // Count slides
+  let totalSlides = 2;
   sections.forEach((sec) => {
-    const type = sec.type || "bullets";
-    const content = sec.content;
-    if (type === "bullets" && Array.isArray(content)) {
-      totalSlides += Math.ceil(content.length / 8);
+    if (sec.type === "cover") return;
+    if (sec.type === "bullets" && Array.isArray(sec.content) && sec.content.length > 12) {
+      totalSlides += Math.ceil(sec.content.length / 12);
     } else {
-      totalSlides += 1;
+      totalSlides++;
     }
   });
 
-  // 1. Cover slide
-  const coverData = sections.find((s) => (s.type === "cover")) || {};
-  slideCover(pres, {
-    title: coverData.title || data.cover_title || "GIẢI PHÁP",
-    subtitle: coverData.subtitle || data.cover_subtitle || "",
-    customer: coverData.customer || customerName,
+  // Cover
+  const cover = sections.find((s) => s.type === "cover") || {};
+  slideCover(pres, T, {
+    title: cover.title || data.cover_title || "GIẢI PHÁP",
+    subtitle: cover.subtitle || data.cover_subtitle || "",
+    customer: cover.customer || data.customer_name || "",
     entity_label: entityLabel,
-    date: new Date().toLocaleDateString("vi-VN"),
   });
 
-  // 2. Content slides
-  let slideNum = 2;
+  // Content
+  let sn = 2;
   sections.forEach((sec) => {
-    if (sec.type === "cover") return; // already handled
-
+    if (sec.type === "cover") return;
     const title = sec.heading || sec.title || "";
-    const type = sec.type || "bullets";
     const content = sec.content;
 
-    if (type === "section_header") {
-      slideSectionHeader(pres, title, slideNum, totalSlides, entityLabel);
-      slideNum++;
-    } else if (type === "cards" && Array.isArray(content)) {
-      slideCards(pres, title, content, slideNum, totalSlides, entityLabel);
-      slideNum++;
-    } else if (type === "stats" && Array.isArray(content)) {
-      slideStats(pres, title, content, slideNum, totalSlides, entityLabel);
-      slideNum++;
-    } else if (type === "table" && Array.isArray(content)) {
-      // Split large tables
+    if (sec.type === "exec_summary") {
+      slideExecSummary(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "stats" && Array.isArray(content)) {
+      slideStats(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "cards" && Array.isArray(content)) {
+      slideCards(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "table" && Array.isArray(content)) {
       const header = content[0] || [];
       const rows = content.slice(1);
       for (let i = 0; i < Math.max(rows.length, 1); i += 8) {
-        const chunk = [header, ...rows.slice(i, i + 8)];
-        const pageTitle = i === 0 ? title : `${title} (tiếp)`;
-        slideTable(pres, pageTitle, chunk, slideNum, totalSlides, entityLabel);
-        slideNum++;
+        slideTable(pres, T, i === 0 ? title : `${title} (tiếp)`, [header, ...rows.slice(i, i + 8)], sn++, totalSlides, entityLabel);
       }
-    } else if (type === "two_column" && typeof content === "object" && !Array.isArray(content)) {
-      slideTwoColumn(pres, title, content, slideNum, totalSlides, entityLabel);
-      slideNum++;
-    } else if (type === "timeline" && Array.isArray(content)) {
-      slideTimeline(pres, title, content, slideNum, totalSlides, entityLabel);
-      slideNum++;
-    } else if (type === "text" && typeof content === "string") {
-      slideText(pres, title, content, slideNum, totalSlides, entityLabel);
-      slideNum++;
-    } else if (type === "bullets" && Array.isArray(content)) {
-      // Split into pages of 8
-      for (let i = 0; i < content.length; i += 8) {
-        const chunk = content.slice(i, i + 8);
-        const pageTitle = i === 0 ? title : `${title} (tiếp)`;
-        slideBullets(pres, pageTitle, chunk, slideNum, totalSlides, entityLabel);
-        slideNum++;
+    } else if (sec.type === "two_column" && typeof content === "object" && !Array.isArray(content)) {
+      slideTwoCol(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "timeline" && Array.isArray(content)) {
+      slideTimeline(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "text" && typeof content === "string") {
+      slideText(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "bullets" && Array.isArray(content)) {
+      for (let i = 0; i < content.length; i += 12) {
+        slideBullets(pres, T, i === 0 ? title : `${title} (tiếp)`, content.slice(i, i + 12), sn++, totalSlides, entityLabel);
       }
     } else {
-      // Fallback: bullets or text
       if (Array.isArray(content)) {
-        slideBullets(pres, title, content.map(String), slideNum, totalSlides, entityLabel);
+        slideBullets(pres, T, title, content.map(String), sn++, totalSlides, entityLabel);
       } else if (typeof content === "string") {
-        slideText(pres, title, content, slideNum, totalSlides, entityLabel);
+        slideText(pres, T, title, content, sn++, totalSlides, entityLabel);
+      } else {
+        sn++;
       }
-      slideNum++;
     }
   });
 
-  // 3. Closing slide
-  slideClosing(pres, entityLabel);
+  slideClosing(pres, T, entityLabel);
 
-  // Write file
   await pres.writeFile({ fileName: outputPath });
-  console.log(`PPTX created: ${outputPath} (${slideNum} slides)`);
+  console.log(`PPTX created: ${outputPath} (${sn} slides)`);
 }
 
-main().catch((err) => {
-  console.error("Error:", err.message);
-  process.exit(1);
-});
+main().catch((err) => { console.error("Error:", err.message); process.exit(1); });

@@ -4256,7 +4256,13 @@ CẤU TRÚC BẮT BUỘC — phải có ĐẦY ĐỦ 16 sections (đúng thứ t
 
 1. Cover (type: "cover") — title: "GIẢI PHÁP", subtitle: tên giải pháp, customer: cho [KH]
 
-2. EXECUTIVE SUMMARY (type: "text") — 5-7 câu: vấn đề → giải pháp → kết quả kỳ vọng.
+2. EXECUTIVE SUMMARY (type: "exec_summary") — 3 cột trực quan:
+   content: {{
+     "problem": ["Vấn đề 1 (ngắn gọn 1-2 câu)", "Vấn đề 2", "Vấn đề 3"],
+     "solution": ["Giải pháp 1", "Giải pháp 2", "Giải pháp 3"],
+     "results": ["Kết quả kỳ vọng 1", "Kết quả 2", "Kết quả 3"],
+     "recommendation": "Đề xuất gói [tên gói]: [mô tả ngắn] — triển khai trong X tuần"
+   }}
 
 3. VỀ {company_name.upper()} (type: "stats") — 4 stats với value+label+description:
    VD: [{{value:"2015", label:"Năm thành lập", description:"10 năm CPaaS"}}, ...]
@@ -4335,6 +4341,7 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
     # Build input JSON for pptxgenjs script
     pptx_data = {
         "customer_name": content.get("customer_name", content.get("subtitle", "")),
+        "legal_entity_id": legal_entity,
         "legal_entity_label": entity_info.get("label", "ViHAT Group"),
         "cover_title": content.get("cover_title", content.get("title", "GIẢI PHÁP")),
         "cover_subtitle": content.get("cover_subtitle", ""),
