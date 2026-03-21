@@ -8,32 +8,27 @@ const fs = require("fs");
 const path = require("path");
 
 // ── Brand Themes (per legal entity) ──
-const THEMES = {
-  vihat_solutions: {
-    primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
-    highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
-    bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
-    text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
-  },
-  vihat_group: {
-    primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
-    highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
-    bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
-    text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
-  },
-  omijsc: {
-    primary: "00C0FF", primaryDark: "1A619B", accent: "004E7A",
-    highlight: "FFE599", success: "28A745", danger: "E74C3C", teal: "00C0FF",
-    bg: "0A1628", bgCard: "132238", bgLight: "EBF6FF",
-    text: "FFFFFF", textBody: "C0D0E0", textMuted: "7890A0",
-  },
-  default: {
-    primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
-    highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
-    bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
-    text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
-  },
+// Load custom themes from data/themes.json (extracted from uploaded templates)
+const DEFAULT_THEME = {
+  primary: "2AB8FC", primaryDark: "324A6F", accent: "0C506F",
+  highlight: "E67E22", success: "28A745", danger: "E74C3C", teal: "17A2B8",
+  bg: "1A2332", bgCard: "1E2D3D", bgLight: "F8F9FA",
+  text: "FFFFFF", textBody: "D0D0D0", textMuted: "8899AA",
 };
+
+let THEMES = { default: DEFAULT_THEME };
+try {
+  const themesPath = path.join(__dirname, "..", "data", "themes.json");
+  if (fs.existsSync(themesPath)) {
+    const customThemes = JSON.parse(fs.readFileSync(themesPath, "utf-8"));
+    Object.keys(customThemes).forEach((key) => {
+      THEMES[key] = { ...DEFAULT_THEME, ...customThemes[key] };
+    });
+    console.log(`Loaded ${Object.keys(customThemes).length} custom themes from themes.json`);
+  }
+} catch (e) {
+  console.error("Failed to load themes.json:", e.message);
+}
 
 const F = { h: "Arial Black", b: "Arial" };
 const SW = 10, SH = 5.625;
@@ -290,36 +285,54 @@ function slideCards(pres, T, title, cards, num, total, label) {
   addFooter(s, T, label, num, total);
 }
 
-// ── SLIDE: Bullets (concise) ──
+// ── SLIDE: Bullets as numbered steps with connecting line ──
 function slideBullets(pres, T, title, items, num, total, label) {
   const s = pres.addSlide();
   addHeader(s, pres, T, title);
 
-  // Two-column card layout for bullets
-  const colW = 4.15, gap = 0.3;
-  const half = Math.ceil(items.length / 2);
-  const leftItems = items.slice(0, half);
-  const rightItems = items.slice(half);
+  // Limit to 6 items, use numbered steps with connecting vertical line
+  const maxItems = Math.min(items.length, 6);
+  const startX = 1.2, startY = 1.2;
+  const rowH = 3.6 / maxItems; // Dynamic height per item
+  const accents = [T.highlight, T.primary, T.teal, T.success, T.danger, T.accent];
 
-  [leftItems, rightItems].forEach((colItems, ci) => {
-    if (colItems.length === 0) return;
-    const cx = 0.7 + ci * (colW + gap);
-
+  // Vertical connecting line
+  if (maxItems > 1) {
     s.addShape(pres.shapes.RECTANGLE, {
-      x: cx, y: 1.1, w: colW, h: 3.8, fill: { color: T.bgCard }, shadow: shadow(),
+      x: startX + 0.17, y: startY + 0.35,
+      w: 0.04, h: (maxItems - 1) * rowH,
+      fill: { color: T.textMuted },
+    });
+  }
+
+  items.slice(0, maxItems).forEach((item, ii) => {
+    const iy = startY + ii * rowH;
+    const accent = accents[ii % accents.length];
+    const itemText = typeof item === "string" ? item : (item.title || item.text || String(item));
+    const itemDesc = typeof item === "object" ? (item.description || item.body || "") : "";
+
+    // Number circle
+    s.addShape(pres.shapes.OVAL, {
+      x: startX, y: iy, w: 0.38, h: 0.38, fill: { color: accent },
+    });
+    s.addText(String(ii + 1), {
+      x: startX, y: iy, w: 0.38, h: 0.38,
+      fontSize: 14, fontFace: F.h, color: T.text, align: "center", valign: "middle", margin: 0,
     });
 
-    colItems.forEach((item, ii) => {
-      const iy = 1.25 + ii * 0.55;
-      // Bullet dot
-      s.addShape(pres.shapes.OVAL, {
-        x: cx + 0.2, y: iy + 0.05, w: 0.15, h: 0.15, fill: { color: T.primary },
-      });
-      s.addText(String(item), {
-        x: cx + 0.45, y: iy - 0.03, w: colW - 0.7, h: 0.5,
-        fontSize: 10, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
-      });
+    // Title text (bold, larger)
+    s.addText(String(itemText), {
+      x: startX + 0.55, y: iy + 0.02, w: 7.5, h: 0.3,
+      fontSize: 13, fontFace: F.b, color: T.text, bold: true, margin: 0, valign: "top",
     });
+
+    // Description (if available)
+    if (itemDesc) {
+      s.addText(String(itemDesc), {
+        x: startX + 0.55, y: iy + 0.3, w: 7.5, h: rowH - 0.4,
+        fontSize: 9, fontFace: F.b, color: T.textMuted, margin: 0, valign: "top",
+      });
+    }
   });
 
   addFooter(s, T, label, num, total);
