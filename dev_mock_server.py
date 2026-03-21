@@ -3079,13 +3079,33 @@ def _get_legal_entities() -> list:
 LEGAL_ENTITIES = _get_legal_entities()  # backward compat
 
 def _load_products_config() -> list:
-    """Legacy: return products + solutions as {id, label, type} for backward compat."""
-    result = [{"id": p["slug"], "label": p["name"], "type": "product"}
-              for p in PRODUCTS.values() if p.get("status") == "active"]
-    result += [{"id": s["slug"], "label": s["name"], "type": "solution",
-                "product_id": s.get("product_id", ""),
-                "product_slug": next((p["slug"] for p in PRODUCTS.values() if p["id"] == s.get("product_id")), "")}
-               for s in SOLUTIONS.values() if s.get("status") == "active"]
+    """Legacy: return solutions as selectable items, grouped under products.
+    Solutions ARE what customers search for. Products with no solutions show directly."""
+    # Collect all solution slugs to know which products are covered
+    solution_slugs = set()
+    result = []
+    for s in sorted(SOLUTIONS.values(), key=lambda x: x.get("sort_order", 0)):
+        if s.get("status") != "active":
+            continue
+        parent = PRODUCTS.get(s.get("product_id", ""))
+        parent_name = parent["name"] if parent else ""
+        result.append({
+            "id": s["slug"],
+            "label": f"{s['name']}" + (f" ({parent_name})" if parent_name and parent_name != s["name"] else ""),
+            "type": "solution",
+            "product_slug": parent["slug"] if parent else "",
+        })
+        solution_slugs.add(s["slug"])
+    # Add products that have NO solutions (standalone)
+    for p in PRODUCTS.values():
+        if p.get("status") == "active" and p["slug"] not in solution_slugs:
+            # Check if any solution references this product
+            has_solutions = any(
+                s.get("product_id") == p["id"] and s.get("status") == "active"
+                for s in SOLUTIONS.values()
+            )
+            if not has_solutions:
+                result.append({"id": p["slug"], "label": p["name"], "type": "product"})
     return result
 
 def _save_products_config(data: list):
