@@ -1,0 +1,53 @@
+{
+  "omijsc": {
+    "primary": "00C0FF",
+    "primaryDark": "FFE599",
+    "accent": "1A619B",
+    "highlight": "E67E22",
+    "success": "28A745",
+    "danger": "E74C3C",
+    "teal": "17A2B8",
+    "bg": "1A2332",
+    "bgCard": "1E2D3D",
+    "bgLight": "F8F9FA",
+    "text": "FFFFFF",
+    "textBody": "D0D0D0",
+    "textMuted": "8899AA",
+    "extracted_colors": [
+      "00C0FF",
+      "FFE599",
+      "1A619B",
+      "EBF6FF",
+      "00C1FF",
+      "C6F1FF"
+    ]
+  },
+  "vihat_solutions": {
+    "primary": "2AB8FC",
+    "primaryDark": "0C506F",
+    "accent": "0C506F",
+    "highlight": "E67E22",
+    "success": "28A745",
+    "danger": "E74C3C",
+    "teal": "17A2B8",
+    "bg": "F3F3F3",
+    "bgCard": "FFFFFF",
+    "bgLight": "F8F9FA",
+    "text": "0C506F",
+    "textBody": "333333",
+    "textMuted": "888888",
+    "isLightTheme": true,
+    "extracted_colors": [
+      "2AB8FC",
+      "D9D9D9",
+      "CFE2F3",
+      "D9EAD3",
+      "0C506F",
+      "F3F3F3"
+    ],
+    "extracted_bg": [
+      "2AB8FC",
+      "F3F3F3"
+    ]
+  }
+}

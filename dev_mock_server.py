@@ -3447,7 +3447,16 @@ def _extract_theme_from_pptx(pptx_path: str) -> dict:
     prs = PptxPres(pptx_path)
     fill_colors = Counter()
     text_colors = Counter()
+    bg_colors = Counter()
     for slide in prs.slides:
+        # Slide background
+        try:
+            bg = slide.background
+            if bg.fill.type is not None and hasattr(bg.fill, 'fore_color') and bg.fill.fore_color:
+                c = str(bg.fill.fore_color.rgb)
+                bg_colors[c] += 1
+        except Exception:
+            pass
         for shape in slide.shapes:
             if hasattr(shape, 'fill') and shape.fill:
                 try:
@@ -3471,6 +3480,7 @@ def _extract_theme_from_pptx(pptx_path: str) -> dict:
     # Pick top colors
     top_fill = [c for c, _ in fill_colors.most_common(6)]
     top_text = [c for c, _ in text_colors.most_common(4)]
+    top_bg = [c for c, _ in bg_colors.most_common(3)]
 
     # Build theme from extracted colors (filter out grays/whites)
     def _is_chromatic(c):
@@ -3495,7 +3505,35 @@ def _extract_theme_from_pptx(pptx_path: str) -> dict:
     primary_dark = next((c for c in chromatic[1:] if _is_dark(c) and c != primary), "324A6F")
     accent = next((c for c in chromatic if c not in (primary, primary_dark) and _is_dark(c)), "0C506F")
     highlight = next((c for c in chromatic if c != primary and _is_warm_color(c)), "E67E22")
-    text_dark = top_text[0] if top_text else "1A1A2E"
+    text_dark = top_text[0] if top_text else "0C506F"
+
+    # Detect light vs dark theme from slide backgrounds
+    def _brightness(c):
+        try:
+            r, g, b = int(c[:2], 16), int(c[2:4], 16), int(c[4:6], 16)
+            return (r + g + b) / 3
+        except:
+            return 128
+
+    bg_brightness = sum(_brightness(c) for c in top_bg[:3]) / max(len(top_bg[:3]), 1) if top_bg else 200
+    is_light_theme = bg_brightness > 128
+
+    if is_light_theme:
+        # Light theme: white/light backgrounds, dark text
+        bg = top_bg[0] if top_bg and _brightness(top_bg[0]) > 180 else "F3F3F3"
+        bg_card = "FFFFFF"
+        bg_light = "F8F9FA"
+        text_color = text_dark if text_dark else "0C506F"
+        text_body = "333333"
+        text_muted = "888888"
+    else:
+        # Dark theme: dark backgrounds, light text
+        bg = top_bg[0] if top_bg and _brightness(top_bg[0]) < 80 else "1A2332"
+        bg_card = "1E2D3D"
+        bg_light = "F8F9FA"
+        text_color = "FFFFFF"
+        text_body = "D0D0D0"
+        text_muted = "8899AA"
 
     return {
         "primary": primary,
@@ -3505,13 +3543,15 @@ def _extract_theme_from_pptx(pptx_path: str) -> dict:
         "success": "28A745",
         "danger": "E74C3C",
         "teal": "17A2B8",
-        "bg": "1A2332",
-        "bgCard": "1E2D3D",
-        "bgLight": "F8F9FA",
-        "text": "FFFFFF",
-        "textBody": "D0D0D0",
-        "textMuted": "8899AA",
+        "bg": bg,
+        "bgCard": bg_card,
+        "bgLight": bg_light,
+        "text": text_color,
+        "textBody": text_body,
+        "textMuted": text_muted,
+        "isLightTheme": is_light_theme,
         "extracted_colors": top_fill[:6],
+        "extracted_bg": top_bg[:3],
     }
 
 def _is_warm_color(hex_color: str) -> bool:
