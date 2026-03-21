@@ -5,6 +5,7 @@
  */
 const pptxgen = require("pptxgenjs");
 const fs = require("fs");
+const path = require("path");
 
 // ── Brand Themes (per legal entity) ──
 const THEMES = {
@@ -471,6 +472,254 @@ function slideTimeline(pres, T, title, phases, num, total, label) {
   addFooter(s, T, label, num, total);
 }
 
+// ── SLIDE: Feature Grid (2x3 cards with icons + title + description) ──
+function slideFeatureGrid(pres, T, title, subtitle, features, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  // Subtitle
+  if (subtitle) {
+    s.addText(String(subtitle), {
+      x: 0.7, y: 1.0, w: 8.6, h: 0.3,
+      fontSize: 11, fontFace: F.b, color: T.textMuted, italic: true, margin: 0,
+    });
+  }
+
+  const cols = 2, maxRows = 3;
+  const cardW = 4.15, cardH = 1.1, gapX = 0.3, gapY = 0.15;
+  const startY = subtitle ? 1.4 : 1.15;
+  const accents = [T.primary, T.highlight, T.teal, T.success, T.danger, T.primaryDark];
+
+  features.slice(0, 6).forEach((feat, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const fx = 0.7 + col * (cardW + gapX);
+    const fy = startY + row * (cardH + gapY);
+    const ac = accents[i % accents.length];
+
+    // Card bg
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: fx, y: fy, w: cardW, h: cardH, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+
+    // Icon circle
+    s.addShape(pres.shapes.OVAL, {
+      x: fx + 0.15, y: fy + 0.15, w: 0.4, h: 0.4, fill: { color: ac },
+    });
+    const icon = typeof feat === "string" ? "★" : (feat.icon || "★");
+    s.addText(icon, {
+      x: fx + 0.15, y: fy + 0.15, w: 0.4, h: 0.4,
+      fontSize: 14, color: T.text, align: "center", valign: "middle", margin: 0,
+    });
+
+    const fTitle = typeof feat === "string" ? feat : (feat.title || feat.name || "");
+    const fDesc = typeof feat === "string" ? "" : (feat.description || feat.body || "");
+
+    // Feature title
+    s.addText(fTitle, {
+      x: fx + 0.65, y: fy + 0.1, w: cardW - 0.85, h: 0.3,
+      fontSize: 11, fontFace: F.h, color: T.primary, bold: true, margin: 0, valign: "middle",
+    });
+    // Description
+    if (fDesc) {
+      s.addText(String(fDesc), {
+        x: fx + 0.65, y: fy + 0.42, w: cardW - 0.85, h: 0.55,
+        fontSize: 8.5, fontFace: F.b, color: T.textMuted, margin: 0, valign: "top",
+      });
+    }
+  });
+
+  // Bottom highlight bar (if provided)
+  const highlight = typeof features === "object" && !Array.isArray(features) ? features.highlight : null;
+  if (highlight) {
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 0.7, y: SH - 0.65, w: 8.6, h: 0.35, fill: { color: T.highlight },
+    });
+    s.addText(String(highlight), {
+      x: 0.85, y: SH - 0.63, w: 8.3, h: 0.31,
+      fontSize: 9, fontFace: F.b, color: T.text, align: "center", valign: "middle", margin: 0,
+    });
+  }
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Steps + Benefits (numbered steps left, benefit cards right) ──
+function slideStepsBenefits(pres, T, title, subtitle, data, num, total, label) {
+  const s = pres.addSlide();
+  addHeader(s, pres, T, title);
+
+  if (subtitle) {
+    s.addText(String(subtitle), {
+      x: 0.7, y: 1.0, w: 8.6, h: 0.3,
+      fontSize: 11, fontFace: F.b, color: T.textMuted, italic: true, margin: 0,
+    });
+  }
+
+  const steps = data.steps || [];
+  const benefits = data.benefits || [];
+  const startY = subtitle ? 1.45 : 1.15;
+  const colW = 4.15, gap = 0.3;
+  const accents = [T.primary, T.highlight, T.teal, T.success];
+
+  // Left column header
+  s.addText(data.steps_title || "Cách hoạt động", {
+    x: 0.7, y: startY, w: colW, h: 0.3,
+    fontSize: 13, fontFace: F.h, color: T.text, margin: 0,
+  });
+
+  // Steps with numbered circles
+  steps.slice(0, 4).forEach((step, i) => {
+    const sy = startY + 0.4 + i * 0.75;
+    const ac = accents[i % accents.length];
+
+    // Number circle
+    s.addShape(pres.shapes.OVAL, {
+      x: 0.7, y: sy, w: 0.42, h: 0.42, fill: { color: ac },
+    });
+    s.addText(String(i + 1).padStart(2, "0"), {
+      x: 0.7, y: sy, w: 0.42, h: 0.42,
+      fontSize: 12, fontFace: F.h, color: T.text, align: "center", valign: "middle", bold: true, margin: 0,
+    });
+
+    const sTitle = typeof step === "string" ? step : (step.title || step.name || "");
+    const sDesc = typeof step === "string" ? "" : (step.description || step.body || "");
+
+    s.addText(sTitle, {
+      x: 1.25, y: sy - 0.02, w: colW - 0.65, h: 0.22,
+      fontSize: 11, fontFace: F.h, color: T.primary, bold: true, margin: 0,
+    });
+    if (sDesc) {
+      s.addText(String(sDesc), {
+        x: 1.25, y: sy + 0.22, w: colW - 0.65, h: 0.4,
+        fontSize: 8.5, fontFace: F.b, color: T.textMuted, margin: 0,
+      });
+    }
+  });
+
+  // Right column header
+  const rx = 0.7 + colW + gap;
+  s.addText(data.benefits_title || "Lợi ích", {
+    x: rx, y: startY, w: colW, h: 0.3,
+    fontSize: 13, fontFace: F.h, color: T.text, margin: 0,
+  });
+
+  // Benefit cards
+  benefits.slice(0, 4).forEach((ben, i) => {
+    const by = startY + 0.4 + i * 0.75;
+
+    // Benefit card bg
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: rx, y: by, w: colW, h: 0.65, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+
+    // Check circle
+    s.addShape(pres.shapes.OVAL, {
+      x: rx + 0.1, y: by + 0.08, w: 0.28, h: 0.28, fill: { color: T.success },
+    });
+    s.addText("✓", {
+      x: rx + 0.1, y: by + 0.06, w: 0.28, h: 0.3,
+      fontSize: 10, color: T.text, align: "center", valign: "middle", margin: 0,
+    });
+
+    const bTitle = typeof ben === "string" ? ben : (ben.title || "");
+    const bDesc = typeof ben === "string" ? "" : (ben.description || ben.body || "");
+
+    s.addText(bTitle, {
+      x: rx + 0.45, y: by + 0.05, w: colW - 0.6, h: 0.22,
+      fontSize: 10, fontFace: F.h, color: T.primary, bold: true, margin: 0,
+    });
+    if (bDesc) {
+      s.addText(String(bDesc), {
+        x: rx + 0.45, y: by + 0.28, w: colW - 0.6, h: 0.3,
+        fontSize: 8, fontFace: F.b, color: T.textMuted, margin: 0,
+      });
+    }
+  });
+
+  addFooter(s, T, label, num, total);
+}
+
+// ── SLIDE: Solution Columns (3 product cards side by side) ──
+function slideSolutionColumns(pres, T, title, subtitle, solutions, num, total, label) {
+  const s = pres.addSlide();
+  s.background = { color: T.bg };
+
+  // Title area (no standard header — full dark bg with title)
+  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
+  s.addText(title.toUpperCase(), {
+    x: 0.7, y: 0.3, w: 8.6, h: 0.6,
+    fontSize: 26, fontFace: F.h, color: T.text, bold: true, margin: 0,
+  });
+  if (subtitle) {
+    s.addText(String(subtitle), {
+      x: 0.7, y: 0.9, w: 8.6, h: 0.3,
+      fontSize: 12, fontFace: F.b, color: T.textMuted, italic: true, margin: 0,
+    });
+  }
+
+  const count = Math.min(solutions.length, 3);
+  const colW = (8.6 - (count - 1) * 0.25) / count;
+  const startY = 1.35;
+  const accents = [T.highlight, T.success, T.teal];
+
+  solutions.slice(0, 3).forEach((sol, i) => {
+    const sx = 0.7 + i * (colW + 0.25);
+    const ac = accents[i % accents.length];
+
+    // Card bg (slightly lighter than main bg)
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: sx, y: startY, w: colW, h: 3.65, fill: { color: T.bgCard }, shadow: shadow(),
+    });
+
+    // Icon circle at top
+    s.addShape(pres.shapes.OVAL, {
+      x: sx + colW / 2 - 0.3, y: startY + 0.15, w: 0.6, h: 0.6, fill: { color: ac },
+    });
+    const icon = typeof sol === "string" ? "●" : (sol.icon || "●");
+    s.addText(icon, {
+      x: sx + colW / 2 - 0.3, y: startY + 0.15, w: 0.6, h: 0.6,
+      fontSize: 18, color: T.text, align: "center", valign: "middle", margin: 0,
+    });
+
+    const sName = typeof sol === "string" ? sol : (sol.name || sol.title || "");
+    const sSubtitle = typeof sol === "string" ? "" : (sol.subtitle || sol.tagline || "");
+    const sItems = typeof sol === "string" ? [] : (sol.items || sol.features || []);
+
+    // Product name
+    s.addText(sName, {
+      x: sx + 0.1, y: startY + 0.85, w: colW - 0.2, h: 0.5,
+      fontSize: 13, fontFace: F.h, color: T.text, align: "center", bold: true, margin: 0,
+    });
+
+    // Subtitle/tagline
+    if (sSubtitle) {
+      s.addText(String(sSubtitle), {
+        x: sx + 0.1, y: startY + 1.35, w: colW - 0.2, h: 0.25,
+        fontSize: 9, fontFace: F.b, color: ac, italic: true, align: "center", margin: 0,
+      });
+    }
+
+    // Feature items with checkmarks
+    sItems.slice(0, 4).forEach((item, ii) => {
+      const iy = startY + 1.7 + ii * 0.45;
+      // Check icon
+      s.addShape(pres.shapes.OVAL, {
+        x: sx + 0.15, y: iy + 0.02, w: 0.2, h: 0.2, fill: { color: T.success },
+      });
+      s.addText("✓", {
+        x: sx + 0.15, y: iy, w: 0.2, h: 0.22,
+        fontSize: 7, color: T.text, align: "center", valign: "middle", margin: 0,
+      });
+      s.addText(String(item), {
+        x: sx + 0.42, y: iy - 0.02, w: colW - 0.6, h: 0.38,
+        fontSize: 9, fontFace: F.b, color: T.textBody, margin: 0, valign: "top",
+      });
+    });
+  });
+
+  addFooter(s, T, label, num, total);
+}
+
 // ── SLIDE: Closing ──
 function slideClosing(pres, T, label) {
   const s = pres.addSlide();
@@ -500,7 +749,20 @@ async function main() {
   const sections = data.sections || [];
   const entityLabel = data.legal_entity_label || "ViHAT Group";
   const entityId = data.legal_entity_id || "default";
-  const T = THEMES[entityId] || THEMES.default;
+
+  // Load custom themes from data/themes.json (extracted from uploaded templates)
+  let customThemes = {};
+  const themesPath = path.join(__dirname, "..", "data", "themes.json");
+  try {
+    if (fs.existsSync(themesPath)) {
+      customThemes = JSON.parse(fs.readFileSync(themesPath, "utf-8"));
+    }
+  } catch (e) { /* ignore */ }
+
+  // Merge: custom theme overrides built-in theme
+  const baseTheme = THEMES[entityId] || THEMES.default;
+  const customTheme = customThemes[entityId] || {};
+  const T = { ...baseTheme, ...customTheme };
 
   const pres = new pptxgen();
   pres.layout = "LAYOUT_16x9";
@@ -550,6 +812,14 @@ async function main() {
       slideTwoCol(pres, T, title, content, sn++, totalSlides, entityLabel);
     } else if (sec.type === "timeline" && Array.isArray(content)) {
       slideTimeline(pres, T, title, content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "feature_grid") {
+      const items = Array.isArray(content) ? content : (content.features || content.items || []);
+      slideFeatureGrid(pres, T, title, sec.subtitle || "", items, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "steps_benefits" && typeof content === "object") {
+      slideStepsBenefits(pres, T, title, sec.subtitle || "", content, sn++, totalSlides, entityLabel);
+    } else if (sec.type === "solution_columns") {
+      const items = Array.isArray(content) ? content : (content.solutions || []);
+      slideSolutionColumns(pres, T, title, sec.subtitle || "", items, sn++, totalSlides, entityLabel);
     } else if (sec.type === "text" && typeof content === "string") {
       slideText(pres, T, title, content, sn++, totalSlides, entityLabel);
     } else if (sec.type === "bullets" && Array.isArray(content)) {

@@ -3427,6 +3427,83 @@ PROPOSALS_DIR = Path(__file__).parent / "data" / "proposals"
 PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATES_DIR = Path(__file__).parent / "data" / "templates"
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+THEMES_PATH = Path(__file__).parent / "data" / "themes.json"
+
+# Load custom themes (extracted from uploaded templates)
+CUSTOM_THEMES: dict = {}
+if THEMES_PATH.exists():
+    try:
+        CUSTOM_THEMES = json.loads(THEMES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+def _save_themes():
+    THEMES_PATH.write_text(json.dumps(CUSTOM_THEMES, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def _extract_theme_from_pptx(pptx_path: str) -> dict:
+    """Extract dominant colors from a PPTX template to build a theme."""
+    from pptx import Presentation as PptxPres
+    from collections import Counter
+    prs = PptxPres(pptx_path)
+    fill_colors = Counter()
+    text_colors = Counter()
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, 'fill') and shape.fill:
+                try:
+                    if shape.fill.type == 1:  # SOLID
+                        c = str(shape.fill.fore_color.rgb)
+                        if c not in ("FFFFFF", "000000"):
+                            fill_colors[c] += 1
+                except Exception:
+                    pass
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    for run in para.runs:
+                        try:
+                            if run.font.color and run.font.color.rgb:
+                                c = str(run.font.color.rgb)
+                                if c not in ("FFFFFF", "000000"):
+                                    text_colors[c] += 1
+                        except Exception:
+                            pass
+
+    # Pick top colors
+    top_fill = [c for c, _ in fill_colors.most_common(6)]
+    top_text = [c for c, _ in text_colors.most_common(4)]
+
+    # Build theme from extracted colors
+    primary = top_fill[0] if top_fill else "2AB8FC"
+    primary_dark = next((c for c in top_fill[1:] if c != primary), "324A6F")
+    accent = next((c for c in top_fill[2:] if c not in (primary, primary_dark)), "0C506F")
+    highlight = next((c for c in top_fill if c != primary and _is_warm_color(c)), "E67E22")
+    text_dark = top_text[0] if top_text else "1A1A2E"
+
+    return {
+        "primary": primary,
+        "primaryDark": primary_dark,
+        "accent": accent,
+        "highlight": highlight,
+        "success": "28A745",
+        "danger": "E74C3C",
+        "teal": "17A2B8",
+        "bg": "1A2332",
+        "bgCard": "1E2D3D",
+        "bgLight": "F8F9FA",
+        "text": "FFFFFF",
+        "textBody": "D0D0D0",
+        "textMuted": "8899AA",
+        "extracted_colors": top_fill[:6],
+    }
+
+def _is_warm_color(hex_color: str) -> bool:
+    """Check if a color is warm (red, orange, yellow)."""
+    try:
+        r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        return r > 180 and g < 200 and b < 150
+    except Exception:
+        return False
+
 PRODUCTS_CONFIG_PATH = Path(__file__).parent / "data" / "products_config.json"
 RFI_TEMPLATES_PATH = Path(__file__).parent / "data" / "rfi_templates.json"
 
@@ -3975,7 +4052,70 @@ async def delete_rfi_template(industry: str):
 
 @app.get("/api/v1/proposals/entities")
 async def get_legal_entities():
-    return _get_legal_entities()
+    entities = _get_legal_entities()
+    # Attach theme info if available
+    for e in entities:
+        e["has_template"] = (TEMPLATES_DIR / e.get("template", "")).exists() if e.get("template") else False
+        e["theme"] = CUSTOM_THEMES.get(e["id"], None)
+    return entities
+
+
+@app.post("/api/v1/proposals/legal-entities/{entity_id}/upload-template")
+async def upload_legal_entity_template(entity_id: str, file: UploadFile = File(...)):
+    """Upload a PPTX template for a legal entity and auto-extract theme colors."""
+    entities = _get_legal_entities()
+    entity = next((e for e in entities if e["id"] == entity_id), None)
+    if not entity:
+        raise HTTPException(404, f"Legal entity '{entity_id}' not found")
+
+    if not file.filename.endswith(".pptx"):
+        raise HTTPException(400, "Only .pptx files are accepted")
+
+    # Save template file
+    template_name = f"proposal_{entity_id}.pptx"
+    template_path = TEMPLATES_DIR / template_name
+    content = await file.read()
+    template_path.write_bytes(content)
+
+    # Update entity config
+    entity["template"] = template_name
+    _save_tenants()
+
+    # Extract theme colors
+    try:
+        theme = _extract_theme_from_pptx(str(template_path))
+        CUSTOM_THEMES[entity_id] = theme
+        _save_themes()
+
+        # Also write to pptxgenjs themes
+        themes_js_path = Path(__file__).parent / "data" / "themes.json"
+        themes_js_path.write_text(json.dumps(CUSTOM_THEMES, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        return {
+            "status": "ok",
+            "template_name": template_name,
+            "theme": theme,
+            "message": f"Template uploaded. Extracted {len(theme.get('extracted_colors', []))} colors.",
+        }
+    except Exception as e:
+        return {
+            "status": "ok",
+            "template_name": template_name,
+            "theme": None,
+            "message": f"Template uploaded but color extraction failed: {e}",
+        }
+
+
+@app.get("/api/v1/proposals/legal-entities/{entity_id}/theme")
+async def get_entity_theme(entity_id: str):
+    """Get the theme colors for a legal entity."""
+    return CUSTOM_THEMES.get(entity_id, {})
+
+
+def _save_tenants():
+    """Persist TENANTS changes."""
+    # For now tenants are in-memory; in production would save to DB
+    pass
 
 
 # --- Company Lookup ---
@@ -4251,6 +4391,11 @@ CÁC LOẠI SECTION HỖ TRỢ:
 - "table": Slide với bảng (content là array of arrays — hàng đầu là header)
 - "two_column": Slide 2 cột (content là {{left_title, left_items, right_title, right_items}})
 - "timeline": Slide lộ trình (content là array of {{name, duration, description}})
+- "feature_grid": Slide 2x3 grid tính năng (content: [{{title, description, icon:"emoji"}}])
+- "steps_benefits": Slide bước + lợi ích 2 cột
+  content: {{steps_title:"...", steps:[{{title, description}}], benefits_title:"...", benefits:[{{title, description}}]}}
+- "solution_columns": Slide 3 cột sản phẩm song song
+  content: [{{name, subtitle, icon:"emoji", items:["feature 1",...]}}]
 
 CẤU TRÚC BẮT BUỘC — phải có ĐẦY ĐỦ 16 sections (đúng thứ tự):
 
@@ -4264,20 +4409,22 @@ CẤU TRÚC BẮT BUỘC — phải có ĐẦY ĐỦ 16 sections (đúng thứ t
      "recommendation": "Đề xuất gói [tên gói]: [mô tả ngắn] — triển khai trong X tuần"
    }}
 
-3. VỀ {company_name.upper()} (type: "stats") — 4 stats với value+label+description:
-   VD: [{{value:"2015", label:"Năm thành lập", description:"10 năm CPaaS"}}, ...]
+3. VỀ {company_name.upper()} (type: "stats") — 4 stats với value+label+description
 
-4. PHÂN TÍCH KHÁCH HÀNG (type: "text") — Phân tích business KH: quy mô, kênh bán, thách thức. Thể hiện "chúng tôi hiểu bạn".
+4. PHÂN TÍCH KHÁCH HÀNG (type: "text") — Phân tích business KH: quy mô, kênh bán, thách thức.
 
-5. THÁCH THỨC HIỆN TẠI (type: "cards") — 4 cards với title+body+impact:
-   VD: [{{title:"Tổng đài cũ", body:"PSTN không mở rộng được", impact:"Chi phí +30%"}}, ...]
+5. THÁCH THỨC HIỆN TẠI (type: "cards") — 4 cards với title+body+impact
 
-6. GIẢI PHÁP ĐỀ XUẤT - TỔNG QUAN (type: "text") — High-level tổng quan giải pháp, liên kết với pain points.
+6. GIẢI PHÁP ĐỀ XUẤT - TỔNG QUAN (type: "solution_columns") — 2-3 cột sản phẩm song song:
+   [{{name:"OmiCall Contact Center", subtitle:"Tổng đài đa kênh AI", icon:"☎", items:["Cloud PBX", "IVR thông minh", ...]}}, ...]
 
-7-8. MỖI sản phẩm/giải pháp đề xuất, 1 section riêng:
-   "GIẢI PHÁP: [TÊN]" (type: "bullets") — 6-8 tính năng chi tiết. PHẢI đáp ứng trực tiếp brief.
+7-8. MỖI sản phẩm/giải pháp đề xuất, 1 section riêng — CHỌN type phù hợp nhất:
+   - Nếu cần mô tả bước + lợi ích → type: "steps_benefits"
+     content: {{steps_title:"Cách hoạt động", steps:[{{title:"Tích hợp SDK", description:"Nhúng VoIP SDK..."}}], benefits_title:"Lợi ích cho KH", benefits:[{{title:"Miễn phí cước gọi", description:"Gọi qua internet..."}}]}}
+   - Nếu liệt kê tính năng → type: "feature_grid"
+     content: [{{title:"Cloud PBX", description:"Tổng đài cloud, IVR đa tầng", icon:"☁"}}, ...]
 
-9. KIẾN TRÚC HỆ THỐNG (type: "bullets") — Architecture, integration points, data flow.
+9. KIẾN TRÚC HỆ THỐNG (type: "bullets") — Architecture, integration points.
 
 10. CASE STUDY (type: "cards") — 2-4 cards: {{title:"Chuỗi bán lẻ 500+ cửa hàng", body:"Kết quả...", impact:"Giảm 40% chi phí"}}
 

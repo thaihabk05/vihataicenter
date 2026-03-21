@@ -1412,6 +1412,128 @@ function RfiTab() {
   );
 }
 
+/* ─── Tab Templates (PPTX upload per entity) ─── */
+
+function TemplatesTab() {
+  const [entities, setEntities] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  const fetchEntities = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await proposalApi.getLegalEntities();
+      setEntities(res.data);
+    } catch {
+      toast.error("Không thể tải danh sách pháp nhân");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchEntities(); }, [fetchEntities]);
+
+  async function handleUpload(entityId: string, file: File) {
+    setUploading(entityId);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/proposals/legal-entities/${entityId}/upload-template`,
+        { method: "POST", body: formData }
+      );
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "Upload thành công");
+        fetchEntities();
+      } else {
+        toast.error(data.detail || "Upload thất bại");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Upload thất bại");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">Templates PPTX</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Upload template PPTX cho từng pháp nhân. Hệ thống sẽ tự động trích xuất màu sắc thương hiệu.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-center py-8 text-muted-foreground">Đang tải...</p>
+        ) : (
+          <div className="space-y-4">
+            {entities.map((e) => (
+              <div key={e.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3">
+                    <Package className="size-5 text-primary" />
+                    <div>
+                      <span className="font-semibold">{e.label}</span>
+                      <span className="ml-2 text-xs text-muted-foreground font-mono">({e.id})</span>
+                    </div>
+                  </div>
+                  <div className="ml-8 mt-1 flex items-center gap-3">
+                    {e.has_template ? (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">
+                        <FileText className="size-3 mr-1" />{e.template}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                        Chưa có template
+                      </Badge>
+                    )}
+                    {e.theme && (
+                      <div className="flex gap-1">
+                        {(e.theme.extracted_colors || []).slice(0, 5).map((c: string, i: number) => (
+                          <div
+                            key={i}
+                            className="size-4 rounded-full border"
+                            style={{ backgroundColor: `#${c}` }}
+                            title={`#${c}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pptx"
+                      className="hidden"
+                      onChange={(ev) => {
+                        const file = ev.target.files?.[0];
+                        if (file) handleUpload(e.id, file);
+                        ev.target.value = "";
+                      }}
+                      disabled={uploading === e.id}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={uploading === e.id}
+                    >
+                      {uploading === e.id ? "Đang upload..." : (e.has_template ? "Thay template" : "Upload template")}
+                    </Button>
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── Main Page ─── */
 
 export default function ProposalSettingsPage() {
@@ -1427,6 +1549,7 @@ export default function ProposalSettingsPage() {
           <TabsTrigger value="products">Sản phẩm</TabsTrigger>
           <TabsTrigger value="solutions">Giải pháp</TabsTrigger>
           <TabsTrigger value="rfi">RFI Templates</TabsTrigger>
+          <TabsTrigger value="templates">Templates</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products" className="mt-4">
@@ -1439,6 +1562,10 @@ export default function ProposalSettingsPage() {
 
         <TabsContent value="rfi" className="mt-4">
           <RfiTab />
+        </TabsContent>
+
+        <TabsContent value="templates" className="mt-4">
+          <TemplatesTab />
         </TabsContent>
       </Tabs>
     </div>
