@@ -3755,9 +3755,20 @@ class ProposalGenerateRequest(BaseModel):
 async def _generate_proposal_content(task: dict) -> dict:
     """Call Claude API to generate proposal content with rich product knowledge."""
     # Get rich product info for selected products
-    selected_slugs = task.get("products", [])
+    # Resolve solution slugs to parent product IDs
+    selected_slugs = set(task.get("products", []))
+    resolved_product_ids = set()
+    selected_solution_names = []
+    for s in SOLUTIONS.values():
+        if s["slug"] in selected_slugs and s.get("status") == "active":
+            resolved_product_ids.add(s.get("product_id", ""))
+            selected_solution_names.append(s["name"])
+    # Also match directly by product slug/name
+    for p in PRODUCTS.values():
+        if p.get("status") == "active" and (p["slug"] in selected_slugs or p["name"] in selected_slugs):
+            resolved_product_ids.add(p["id"])
     rich_products = [p for p in PRODUCTS.values()
-                     if p.get("status") == "active" and (p["slug"] in selected_slugs or p["name"] in selected_slugs)]
+                     if p["id"] in resolved_product_ids and p.get("status") == "active"]
 
     # Build detailed product knowledge for Claude
     products_detail = ""
@@ -3846,7 +3857,7 @@ CẤU TRÚC BẮT BUỘC các sections (phải có ĐẦY ĐỦ):
 
 QUAN TRỌNG: Viết bằng tiếng Việt, chuyên nghiệp, chi tiết. Chỉ trả về JSON, không thêm text khác."""
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
@@ -4313,11 +4324,14 @@ async def _run_proposal_generation(task_id: str):
         print(f"[Proposal] Task {task_id} completed: {filename}")
 
     except Exception as e:
+        import traceback
+        error_detail = f"{type(e).__name__}: {e}"
+        traceback_str = traceback.format_exc()
         task["status"] = "error"
-        task["error"] = str(e)
+        task["error"] = error_detail
         task["completed_at"] = datetime.now().isoformat()
         _save_proposal_tasks()
-        print(f"[Proposal] Task {task_id} error: {e}")
+        print(f"[Proposal] Task {task_id} error: {error_detail}\n{traceback_str}")
 
 
 @app.post("/api/v1/proposals/generate")
