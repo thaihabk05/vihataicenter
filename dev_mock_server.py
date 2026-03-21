@@ -2368,9 +2368,19 @@ async def query(req: QueryRequest):
     else:
         rewritten = normalized
 
+    # Anti-hallucination: prepend instruction to first message
+    anti_hallucination = ""
+    if not req.conversation_id:
+        anti_hallucination = (
+            "[QUAN TRỌNG: Chỉ trả lời dựa trên thông tin có trong kho tri thức được cung cấp. "
+            "TUYỆT ĐỐI KHÔNG bịa đặt, suy đoán, hoặc thêm thông tin không có trong tài liệu. "
+            "Nếu không tìm thấy thông tin, hãy nói rõ 'Tôi không tìm thấy thông tin này trong kho tri thức' "
+            "thay vì tự tạo câu trả lời. Đặc biệt KHÔNG bịa tiểu sử, kinh nghiệm, chức vụ của bất kỳ ai.]\n\n"
+        )
+
     payload = {
         "inputs": {},
-        "query": rewritten,
+        "query": anti_hallucination + rewritten,
         "response_mode": "blocking",
         "user": req.user_id,
     }
