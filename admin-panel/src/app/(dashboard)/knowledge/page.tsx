@@ -1541,7 +1541,7 @@ export default function KnowledgePage() {
                         <TableHead>Loại</TableHead>
                         <TableHead>Sections</TableHead>
                         <TableHead>Trạng thái</TableHead>
-                        <TableHead>Người tải</TableHead>
+                        <TableHead>Thời gian</TableHead>
                         <TableHead className="text-right">Hành động</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1651,22 +1651,27 @@ export default function KnowledgePage() {
                                 ] ?? doc.status}
                               </Badge>
                             </TableCell>
-                            {/* Uploaded by + date */}
+                            {/* Timestamps */}
                             <TableCell className="text-xs text-muted-foreground">
-                              <div>
-                                {doc.uploaded_by_name && (
-                                  <div className="flex items-center gap-1">
-                                    <User className="size-3" />
-                                    <span className="truncate max-w-[80px]">{doc.uploaded_by_name}</span>
+                              <div className="space-y-0.5">
+                                {doc.file_modified_at && (
+                                  <div title="Thời gian cập nhật gốc">
+                                    <span className="text-[10px] text-muted-foreground/60">Cập nhật: </span>
+                                    {format(new Date(doc.file_modified_at), "dd/MM/yy HH:mm", { locale: vi })}
                                   </div>
                                 )}
-                                <span>
+                                {doc.file_created_at && (
+                                  <div title="Thời gian tạo gốc">
+                                    <span className="text-[10px] text-muted-foreground/60">Tạo: </span>
+                                    {format(new Date(doc.file_created_at), "dd/MM/yy HH:mm", { locale: vi })}
+                                  </div>
+                                )}
+                                <div title="Thời gian import">
+                                  <span className="text-[10px] text-muted-foreground/60">Import: </span>
                                   {doc.created_at
-                                    ? format(new Date(doc.created_at), "dd/MM/yy", {
-                                        locale: vi,
-                                      })
+                                    ? format(new Date(doc.created_at), "dd/MM/yy", { locale: vi })
                                     : "-"}
-                                </span>
+                                </div>
                               </div>
                             </TableCell>
                             {/* Actions */}

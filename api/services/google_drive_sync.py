@@ -106,7 +106,7 @@ class GoogleDriveSync:
             query = f"'{fid}' in parents and trashed = false"
             results = drive.files().list(
                 q=query,
-                fields="files(id, name, mimeType, modifiedTime, size)",
+                fields="files(id, name, mimeType, createdTime, modifiedTime, size)",
                 pageSize=100,
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,

@@ -947,6 +947,8 @@ async def list_knowledge(knowledge_base: Optional[str] = None, status: Optional[
             "uploaded_by": entry.get("uploaded_by"),
             "uploaded_by_name": _get_user_name(entry.get("uploaded_by")),
             "created_at": entry.get("uploaded_at", ""),
+            "file_created_at": entry.get("file_created_at", ""),
+            "file_modified_at": entry.get("file_modified_at", ""),
             "download_url": f"http://localhost:8000/api/v1/files/{parent_id}/download",
         })
 
@@ -1427,6 +1429,14 @@ async def upload_knowledge(
     parent_id = section_doc_ids[0] if section_doc_ids else str(uuid.uuid4())
 
     parsed_tags = json.loads(tags) if tags else []
+    # Get file modification time from stored file
+    file_modified_at = ""
+    try:
+        stat = stored_path.stat()
+        file_modified_at = datetime.fromtimestamp(stat.st_mtime).isoformat()
+    except Exception:
+        pass
+
     FILE_REGISTRY[parent_id] = {
         "file_name": file_name,
         "title": title or file_name,
@@ -1440,6 +1450,7 @@ async def upload_knowledge(
         "tags": parsed_tags,
         "uploaded_by": uploaded_by,
         "source_id": None,
+        "file_modified_at": file_modified_at,
     }
     save_registry()
 
@@ -2844,6 +2855,8 @@ async def _run_drive_import(task_id: str, folder_id: str, dataset_id: str, knowl
                 "source_id": source_id or None,
                 "uploaded_by": uploaded_by or None,
                 "description": "",
+                "file_created_at": file_info.get("createdTime", ""),
+                "file_modified_at": file_info.get("modifiedTime", ""),
             }
             # Track document in source
             if source_id and source_id in DRIVE_SOURCES:
