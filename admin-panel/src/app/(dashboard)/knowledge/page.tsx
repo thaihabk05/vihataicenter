@@ -85,6 +85,8 @@ function SourceIcon({ type }: { type?: string }) {
       return <Sheet className="size-3.5 text-green-600" />;
     case "google_doc":
       return <FileText className="size-3.5 text-blue-600" />;
+    case "web":
+      return <Globe className="size-3.5 text-purple-600" />;
     default:
       return <Upload className="size-3.5 text-gray-500" />;
   }
@@ -95,6 +97,7 @@ function sourceLabel(type?: string): string {
     case "google_drive": return "Google Drive";
     case "google_sheet": return "Google Sheet";
     case "google_doc": return "Google Doc";
+    case "web": return "Web URL";
     default: return "Upload";
   }
 }
@@ -1441,10 +1444,11 @@ export default function KnowledgePage() {
                       <SelectValue placeholder="Sản phẩm..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="_all">Tất cả sản phẩm</SelectItem>
-                      {products.map((p) => (
-                        <SelectItem key={p.slug} value={p.slug}>
-                          {p.name}
+                      <SelectItem value="_all">Tất cả</SelectItem>
+                      <SelectItem value="chung">Kiến thức chung</SelectItem>
+                      {solutions.map((s) => (
+                        <SelectItem key={s.slug} value={s.slug}>
+                          {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1526,22 +1530,31 @@ export default function KnowledgePage() {
                                 ] ?? doc.knowledge_base}
                               </Badge>
                             </TableCell>
-                            {/* Products */}
+                            {/* Products/Solutions */}
                             <TableCell>
                               <div className="flex flex-wrap gap-1">
                                 {(doc.tags ?? [])
-                                  .filter((t: string) => products.some((p) => p.slug === t))
-                                  .map((t: string) => (
-                                    <Badge key={t} variant="outline" className="text-[10px] bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                                      {products.find((p) => p.slug === t)?.name ?? t}
-                                    </Badge>
-                                  ))}
+                                  .filter((t: string) =>
+                                    t === "chung" ||
+                                    products.some((p) => p.slug === t) ||
+                                    solutions.some((s) => s.slug === t)
+                                  )
+                                  .map((t: string) => {
+                                    const sol = solutions.find((s) => s.slug === t);
+                                    const prod = products.find((p) => p.slug === t);
+                                    const label = sol?.name ?? prod?.name ?? (t === "chung" ? "Chung" : t);
+                                    return (
+                                      <Badge key={t} variant="outline" className={`text-[10px] ${t === "chung" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"}`}>
+                                        {label}
+                                      </Badge>
+                                    );
+                                  })}
                               </div>
                             </TableCell>
                             {/* Type */}
                             <TableCell className="text-xs">
                               <Badge variant="outline" className="text-[10px]">
-                                {doc.file_type ?? "-"}
+                                {(doc.file_type ?? "-").toUpperCase()}
                               </Badge>
                             </TableCell>
                             {/* Sections */}

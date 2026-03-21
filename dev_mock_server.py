@@ -3112,6 +3112,7 @@ async def _run_web_import(task_id: str, url: str, dataset_id: str, knowledge_bas
             "file_name": file_name,
             "file_path": str(file_path),
             "file_type": "web",
+            "source_type": "web",
             "tags": product_tags,
             "section_doc_ids": section_doc_ids,
             "status": "active",
