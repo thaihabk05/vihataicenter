@@ -1332,6 +1332,11 @@ function RfiTab() {
                         value={(q.options ?? []).join("\n")}
                         onChange={(e) =>
                           updateQuestion(index, {
+                            options: e.target.value.split("\n"),
+                          })
+                        }
+                        onBlur={(e) =>
+                          updateQuestion(index, {
                             options: e.target.value
                               .split("\n")
                               .filter((o) => o.trim()),
