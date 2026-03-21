@@ -1063,7 +1063,9 @@ function SolutionsTab() {
                 <Label>Sản phẩm liên kết *</Label>
                 <Select value={formProductId} onValueChange={(v) => setFormProductId(v ?? "")}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Chọn sản phẩm" />
+                    <SelectValue placeholder="Chọn sản phẩm">
+                      {products.find((p) => p.id === formProductId)?.name || "Chọn sản phẩm"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {products.map((p) => (
