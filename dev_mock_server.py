@@ -4293,6 +4293,7 @@ class ProposalGenerateRequest(BaseModel):
     legal_entity: str = "omijsc"
     output_format: str = "pptx"  # pptx or docx
     brief_text: str = ""  # Original brief from user
+    slide_methods: list = []  # ["design", "template"] — which PPTX methods to use
 
 
 async def _generate_proposal_content(task: dict) -> dict:
@@ -4536,6 +4537,249 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
             pass
 
 
+def _create_pptx_template_based(content: dict, output_path: Path, legal_entity: str):
+    """Create PPTX proposal using company template layouts."""
+    from pptx import Presentation as PptxPres
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN
+
+    # Find template file
+    template_path = TEMPLATES_DIR / f"proposal_{legal_entity}.pptx"
+    if not template_path.exists():
+        # Fallback to any available template
+        templates = list(TEMPLATES_DIR.glob("proposal_*.pptx"))
+        template_path = templates[0] if templates else None
+
+    if not template_path or not template_path.exists():
+        raise RuntimeError(f"No template found for {legal_entity}")
+
+    prs = PptxPres(str(template_path))
+
+    # Map layout names
+    layouts = {}
+    for layout in prs.slide_layouts:
+        layouts[layout.name] = layout
+
+    # Remove all existing slides (keep only layouts)
+    while len(prs.slides) > 0:
+        rId = prs.slides._sldIdLst[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id')
+        if rId:
+            prs.part.drop_rel(rId)
+        prs.slides._sldIdLst.remove(prs.slides._sldIdLst[0])
+
+    # Helper: get layout with fallback
+    def get_layout(preferred, *fallbacks):
+        for name in [preferred] + list(fallbacks):
+            if name in layouts:
+                return layouts[name]
+        return layouts.get("BLANK", list(layouts.values())[0])
+
+    # Helper: set placeholder text
+    def set_ph(slide, idx, text):
+        for ph in slide.placeholders:
+            if ph.placeholder_format.idx == idx:
+                ph.text = str(text)
+                return ph
+        return None
+
+    # Helper: set placeholder with formatted runs
+    def set_ph_bullets(slide, idx, items):
+        for ph in slide.placeholders:
+            if ph.placeholder_format.idx == idx:
+                tf = ph.text_frame
+                tf.clear()
+                for i, item in enumerate(items):
+                    if isinstance(item, dict):
+                        title = item.get("title", item.get("name", ""))
+                        desc = item.get("description", item.get("body", ""))
+                        text = f"{title}: {desc}" if desc else title
+                    else:
+                        text = str(item)
+                    p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+                    p.text = text
+                    p.space_after = Pt(4)
+                return ph
+        return None
+
+    sections = content.get("sections", [])
+    customer = content.get("customer_name", content.get("subtitle", ""))
+
+    # Slide 1: Cover (TITLE layout)
+    cover = prs.slides.add_slide(get_layout("TITLE"))
+    cover_title = content.get("cover_title", content.get("title", "GIẢI PHÁP"))
+    cover_subtitle = content.get("cover_subtitle", customer)
+    set_ph(cover, 0, cover_title)
+    set_ph(cover, 1, cover_subtitle)
+
+    # Process sections
+    for sec in sections:
+        sec_title = sec.get("title", "")
+        sec_type = sec.get("type", "text")
+        sec_content = sec.get("content", "")
+
+        if sec_type == "exec_summary":
+            # Executive Summary → TITLE_AND_BODY
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
+            set_ph(slide, 0, sec_title)
+            if isinstance(sec_content, dict):
+                problems = sec_content.get("problem", sec_content.get("problems", []))
+                solutions = sec_content.get("solution", sec_content.get("solutions", []))
+                results = sec_content.get("results", sec_content.get("expected_results", []))
+                rec = sec_content.get("recommendation", "")
+                body = "VẤN ĐỀ:\n"
+                body += "\n".join(f"• {p}" for p in problems[:4])
+                body += "\n\nGIẢI PHÁP:\n"
+                body += "\n".join(f"• {s}" for s in solutions[:4])
+                body += "\n\nKẾT QUẢ KỲ VỌNG:\n"
+                body += "\n".join(f"• {r}" for r in results[:4])
+                if rec:
+                    body += f"\n\n→ {rec}"
+                set_ph(slide, 1, body)
+            else:
+                set_ph(slide, 1, str(sec_content))
+
+        elif sec_type == "stats":
+            # Stats → BIG_NUMBER layout
+            slide = prs.slides.add_slide(get_layout("BIG_NUMBER", "TITLE_AND_BODY"))
+            set_ph(slide, 0, sec_title)
+            stats = sec_content if isinstance(sec_content, list) else []
+            body = ""
+            for st in stats[:4]:
+                val = st.get("value", "") if isinstance(st, dict) else str(st)
+                lbl = st.get("label", "") if isinstance(st, dict) else ""
+                desc = st.get("description", "") if isinstance(st, dict) else ""
+                body += f"{val}  {lbl}\n{desc}\n\n"
+            set_ph(slide, 1, body.strip())
+
+        elif sec_type in ("cards", "feature_grid"):
+            # Cards → TITLE_AND_TWO_COLUMNS
+            items = sec_content if isinstance(sec_content, list) else []
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
+            set_ph(slide, 0, sec_title)
+            half = len(items) // 2 + len(items) % 2
+            left = items[:half]
+            right = items[half:]
+            set_ph_bullets(slide, 1, left)
+            set_ph_bullets(slide, 2, right)
+
+        elif sec_type == "solution_columns":
+            # Solution overview → ONE_COLUMN_TEXT or TITLE_AND_BODY
+            solutions_data = sec_content.get("solutions", []) if isinstance(sec_content, dict) else (sec_content if isinstance(sec_content, list) else [])
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
+            set_ph(slide, 0, sec_title)
+            body = ""
+            for sol in solutions_data[:3]:
+                name = sol.get("name", sol.get("title", "")) if isinstance(sol, dict) else str(sol)
+                tagline = sol.get("subtitle", sol.get("tagline", "")) if isinstance(sol, dict) else ""
+                features = sol.get("items", sol.get("features", [])) if isinstance(sol, dict) else []
+                body += f"■ {name}"
+                if tagline:
+                    body += f" — {tagline}"
+                body += "\n"
+                for feat in features[:4]:
+                    body += f"  ✓ {feat}\n"
+                body += "\n"
+            set_ph(slide, 1, body.strip())
+
+        elif sec_type == "steps_benefits":
+            # Steps + Benefits → TITLE_AND_TWO_COLUMNS
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
+            set_ph(slide, 0, sec_title)
+            data = sec_content if isinstance(sec_content, dict) else {}
+            steps = data.get("steps", [])
+            benefits = data.get("benefits", [])
+            # Left: steps
+            steps_text = data.get("steps_title", "Cách hoạt động") + "\n"
+            for i, step in enumerate(steps[:4]):
+                title = step.get("title", str(step)) if isinstance(step, dict) else str(step)
+                desc = step.get("description", "") if isinstance(step, dict) else ""
+                steps_text += f"{i+1}. {title}\n"
+                if desc:
+                    steps_text += f"   {desc}\n"
+            set_ph(slide, 1, steps_text.strip())
+            # Right: benefits
+            ben_text = data.get("benefits_title", "Lợi ích") + "\n"
+            for ben in benefits[:4]:
+                title = ben.get("title", str(ben)) if isinstance(ben, dict) else str(ben)
+                desc = ben.get("description", "") if isinstance(ben, dict) else ""
+                ben_text += f"✓ {title}\n"
+                if desc:
+                    ben_text += f"  {desc}\n"
+            set_ph(slide, 2, ben_text.strip())
+
+        elif sec_type == "two_column":
+            # Two columns
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
+            set_ph(slide, 0, sec_title)
+            data = sec_content if isinstance(sec_content, dict) else {}
+            set_ph_bullets(slide, 1, data.get("left", data.get("column1", [])))
+            set_ph_bullets(slide, 2, data.get("right", data.get("column2", [])))
+
+        elif sec_type == "table":
+            # Table → TITLE_AND_BODY
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
+            set_ph(slide, 0, sec_title)
+            table_data = sec_content if isinstance(sec_content, list) else []
+            body = ""
+            for row in table_data:
+                if isinstance(row, list):
+                    body += " | ".join(str(c) for c in row) + "\n"
+            set_ph(slide, 1, body.strip())
+
+        elif sec_type == "timeline":
+            # Timeline → TITLE_AND_BODY
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
+            set_ph(slide, 0, sec_title)
+            phases = sec_content if isinstance(sec_content, list) else []
+            body = ""
+            for phase in phases[:6]:
+                name = phase.get("name", phase.get("title", "")) if isinstance(phase, dict) else str(phase)
+                duration = phase.get("duration", "") if isinstance(phase, dict) else ""
+                items = phase.get("items", phase.get("tasks", [])) if isinstance(phase, dict) else []
+                body += f"▸ {name}"
+                if duration:
+                    body += f" ({duration})"
+                body += "\n"
+                for item in items[:3]:
+                    body += f"  • {item}\n"
+                body += "\n"
+            set_ph(slide, 1, body.strip())
+
+        elif sec_type == "bullets":
+            # Bullet list → TITLE_AND_BODY or TWO_COLUMNS
+            items = sec_content if isinstance(sec_content, list) else [str(sec_content)]
+            if len(items) > 4:
+                slide = prs.slides.add_slide(get_layout("TITLE_AND_TWO_COLUMNS", "TITLE_AND_BODY"))
+                set_ph(slide, 0, sec_title)
+                half = len(items) // 2 + len(items) % 2
+                set_ph_bullets(slide, 1, items[:half])
+                set_ph_bullets(slide, 2, items[half:])
+            else:
+                slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY"))
+                set_ph(slide, 0, sec_title)
+                set_ph_bullets(slide, 1, items)
+
+        else:
+            # Default: text → TITLE_AND_BODY
+            slide = prs.slides.add_slide(get_layout("TITLE_AND_BODY", "TITLE_ONLY"))
+            set_ph(slide, 0, sec_title)
+            if isinstance(sec_content, str):
+                set_ph(slide, 1, sec_content)
+            elif isinstance(sec_content, list):
+                set_ph_bullets(slide, 1, sec_content)
+            elif isinstance(sec_content, dict):
+                text = sec_content.get("text", sec_content.get("body", json.dumps(sec_content, ensure_ascii=False)))
+                set_ph(slide, 1, str(text))
+
+    # Closing slide
+    closing = prs.slides.add_slide(get_layout("SECTION_HEADER", "TITLE"))
+    set_ph(closing, 0, "CẢM ƠN QUÝ KHÁCH")
+
+    prs.save(str(output_path))
+    print(f"[Proposal] Template-based PPTX saved: {output_path}")
+
+
 def _create_docx_proposal(content: dict, output_path: Path, legal_entity: str):
     """Create DOCX proposal from AI content."""
     from docx import Document
@@ -4627,23 +4871,37 @@ async def _run_proposal_generation(task_id: str):
         task["status"] = "generating_content"
         content = await _generate_proposal_content(task)
 
-        # Phase 2: Create document
+        # Phase 2: Create document(s)
         task["status"] = "creating_document"
         safe_name = re.sub(r'[^\w\s-]', '', task["customer_name"]).strip().replace(' ', '_')
-        filename = f"proposal_{safe_name}_{task_id}.{task['output_format']}"
-        output_path = PROPOSALS_DIR / filename
+        legal_entity = task.get("legal_entity", "omijsc")
+        slide_methods = task.get("slide_methods", ["design"])
+        generated_files = []
 
         if task["output_format"] == "pptx":
-            await asyncio.to_thread(_create_pptx_proposal, content, output_path, task.get("legal_entity", "omijsc"))
+            for method in slide_methods:
+                suffix = f"_{method}" if len(slide_methods) > 1 else ""
+                filename = f"proposal_{safe_name}_{task_id}{suffix}.pptx"
+                output_path = PROPOSALS_DIR / filename
+                if method == "template":
+                    await asyncio.to_thread(_create_pptx_template_based, content, output_path, legal_entity)
+                else:
+                    await asyncio.to_thread(_create_pptx_proposal, content, output_path, legal_entity)
+                generated_files.append(filename)
+                print(f"[Proposal] Generated {method}: {filename}")
         else:
-            await asyncio.to_thread(_create_docx_proposal, content, output_path, task.get("legal_entity", "omijsc"))
+            filename = f"proposal_{safe_name}_{task_id}.docx"
+            output_path = PROPOSALS_DIR / filename
+            await asyncio.to_thread(_create_docx_proposal, content, output_path, legal_entity)
+            generated_files.append(filename)
 
         task["status"] = "completed"
-        task["file_path"] = str(output_path)
-        task["file_name"] = filename
+        task["file_path"] = str(PROPOSALS_DIR / generated_files[0])
+        task["file_name"] = generated_files[0]
+        task["all_files"] = generated_files
         task["completed_at"] = datetime.now().isoformat()
         _save_proposal_tasks()
-        print(f"[Proposal] Task {task_id} completed: {filename}")
+        print(f"[Proposal] Task {task_id} completed: {generated_files}")
 
     except Exception as e:
         import traceback
@@ -4665,6 +4923,8 @@ async def generate_proposal(req: ProposalGenerateRequest):
         raise HTTPException(500, "ANTHROPIC_API_KEY not configured")
 
     task_id = str(uuid.uuid4())[:8]
+    slide_methods = req.slide_methods or ["design", "template"]
+
     PROPOSAL_TASKS[task_id] = {
         "task_id": task_id,
         "status": "generating_content",
@@ -4676,6 +4936,7 @@ async def generate_proposal(req: ProposalGenerateRequest):
         "legal_entity": req.legal_entity,
         "output_format": req.output_format,
         "brief_text": req.brief_text,
+        "slide_methods": slide_methods,
         "started_at": datetime.now().isoformat(),
         "completed_at": None,
         "file_name": None,
@@ -4700,8 +4961,8 @@ async def list_proposal_tasks():
 
 
 @app.get("/api/v1/proposals/{task_id}/download")
-async def download_proposal(task_id: str):
-    """Download generated proposal file."""
+async def download_proposal(task_id: str, file: str = ""):
+    """Download generated proposal file. Use ?file=filename for specific file."""
     from fastapi.responses import FileResponse
 
     task = PROPOSAL_TASKS.get(task_id)
@@ -4709,6 +4970,17 @@ async def download_proposal(task_id: str):
         raise HTTPException(404, "Task not found")
     if task["status"] != "completed":
         raise HTTPException(400, f"Task is {task['status']}, not ready for download")
+
+    # If specific file requested (for multi-file tasks)
+    if file and file in (task.get("all_files") or []):
+        specific_path = PROPOSALS_DIR / file
+        if specific_path.exists():
+            ext = file.rsplit(".", 1)[-1] if "." in file else "pptx"
+            media_types = {
+                "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            }
+            return FileResponse(str(specific_path), filename=file, media_type=media_types.get(ext, "application/octet-stream"))
 
     file_path = task.get("file_path")
     if not file_path or not Path(file_path).exists():

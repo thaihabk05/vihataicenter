@@ -155,6 +155,8 @@ export default function ProposalsPage() {
   const [rfiAnswers, setRfiAnswers] = useState<Record<string, any>>({});
   const [legalEntity, setLegalEntity] = useState("omijsc");
   const [outputFormat, setOutputFormat] = useState<"pptx" | "docx">("pptx");
+  const [slideMethodDesign, setSlideMethodDesign] = useState(true);   // pptxgenjs (design)
+  const [slideMethodTemplate, setSlideMethodTemplate] = useState(true); // python-pptx (template)
   const [submitting, setSubmitting] = useState(false);
   const [parsingBrief, setParsingBrief] = useState(false);
 
@@ -318,6 +320,10 @@ export default function ProposalsPage() {
       const allProducts = [...selectedProducts];
       if (customProduct.trim()) allProducts.push(customProduct.trim());
 
+      const slideMethods = [];
+      if (slideMethodDesign) slideMethods.push("design");
+      if (slideMethodTemplate) slideMethods.push("template");
+
       await proposalApi.generate({
         customer_name: customerName.trim(),
         industry,
@@ -327,6 +333,7 @@ export default function ProposalsPage() {
         legal_entity: legalEntity,
         output_format: outputFormat,
         brief_text: brief.trim(),
+        slide_methods: outputFormat === "pptx" ? slideMethods : undefined,
       });
 
       toast.success("Đang tạo proposal! Vui lòng chờ...");
@@ -688,6 +695,30 @@ export default function ProposalsPage() {
                 </label>
               </div>
             </div>
+            {outputFormat === "pptx" && (
+              <div className="grid gap-2">
+                <Label>Phương pháp tạo slide</Label>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={slideMethodDesign}
+                      onCheckedChange={(v) => setSlideMethodDesign(!!v)}
+                    />
+                    Design (pptxgenjs)
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <Checkbox
+                      checked={slideMethodTemplate}
+                      onCheckedChange={(v) => setSlideMethodTemplate(!!v)}
+                    />
+                    Template-based
+                  </label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Chọn cả 2 để so sánh. Design tạo slide đẹp từ scratch. Template dùng layout từ file PPTX đã upload.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Actions */}
@@ -815,16 +846,28 @@ export default function ProposalsPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         {t.status === "completed" && t.file_name && (
-                          <a
-                            href={proposalApi.downloadUrl(t.task_id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <Button size="sm" variant="outline">
-                              <Download className="size-4" />
-                              Tải
-                            </Button>
-                          </a>
+                          <div className="flex gap-1 justify-end">
+                            {((t as any).all_files && (t as any).all_files.length > 1) ? (
+                              (t as any).all_files.map((f: string, fi: number) => {
+                                const label = f.includes("_design") ? "Design" : f.includes("_template") ? "Template" : "Tải";
+                                return (
+                                  <a key={fi} href={`${proposalApi.downloadUrl(t.task_id)}?file=${encodeURIComponent(f)}`} target="_blank" rel="noopener noreferrer">
+                                    <Button size="sm" variant="outline" className="text-xs">
+                                      <Download className="size-3" />
+                                      {label}
+                                    </Button>
+                                  </a>
+                                );
+                              })
+                            ) : (
+                              <a href={proposalApi.downloadUrl(t.task_id)} target="_blank" rel="noopener noreferrer">
+                                <Button size="sm" variant="outline">
+                                  <Download className="size-4" />
+                                  Tải
+                                </Button>
+                              </a>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
