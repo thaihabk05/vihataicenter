@@ -50,7 +50,7 @@ import {
   Database,
   User,
 } from "lucide-react";
-import { knowledgeApi, productApi } from "@/lib/api-client";
+import { knowledgeApi, productApi, solutionApi } from "@/lib/api-client";
 import { DEPARTMENTS, DOC_STATUS, KB_LIST } from "@/lib/constants";
 import type { KnowledgeDocument, Product, DriveSource } from "@/lib/types";
 import { Package, X, RefreshCw, Search, Sparkles } from "lucide-react";
@@ -100,43 +100,79 @@ function sourceLabel(type?: string): string {
 }
 
 /* ─── Product Tag Selector (reusable) ─── */
+interface SolutionItem {
+  id: string;
+  name: string;
+  slug: string;
+  product_id: string;
+  product_name?: string;
+  aliases?: string[];
+}
+
 function ProductTagSelector({
   products,
+  solutions,
   selected,
   onChange,
 }: {
   products: Product[];
+  solutions: SolutionItem[];
   selected: string[];
   onChange: (tags: string[]) => void;
 }) {
+  const toggle = (slug: string) => {
+    onChange(
+      selected.includes(slug)
+        ? selected.filter((s) => s !== slug)
+        : [...selected, slug]
+    );
+  };
+
   return (
     <div className="grid gap-2">
       <Label className="flex items-center gap-1.5">
         <Package className="size-3.5" />
-        Sản phẩm liên quan
+        Sản phẩm / Giải pháp liên quan
       </Label>
       {products.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="space-y-2">
           {products.map((p) => {
-            const isSelected = selected.includes(p.slug);
+            const productSolutions = solutions.filter((s) => s.product_id === p.id);
             return (
-              <Badge
-                key={p.slug}
-                variant={isSelected ? "default" : "outline"}
-                className={`cursor-pointer transition-colors ${
-                  isSelected ? "bg-blue-600 hover:bg-blue-700" : "hover:bg-muted"
-                }`}
-                onClick={() =>
-                  onChange(
-                    isSelected
-                      ? selected.filter((s) => s !== p.slug)
-                      : [...selected, p.slug]
-                  )
-                }
-              >
-                {p.name}
-                {isSelected && <X className="size-3 ml-1" />}
-              </Badge>
+              <div key={p.id} className="space-y-1">
+                <span className="text-xs font-semibold text-muted-foreground">{p.name}</span>
+                <div className="flex flex-wrap gap-1.5 ml-2">
+                  {productSolutions.length > 0 ? (
+                    productSolutions.map((s) => {
+                      const isSelected = selected.includes(s.slug);
+                      return (
+                        <Badge
+                          key={s.slug}
+                          variant={isSelected ? "default" : "outline"}
+                          className={`cursor-pointer transition-colors ${
+                            isSelected ? "bg-blue-600 hover:bg-blue-700" : "hover:bg-muted"
+                          }`}
+                          onClick={() => toggle(s.slug)}
+                        >
+                          {s.name}
+                          {isSelected && <X className="size-3 ml-1" />}
+                        </Badge>
+                      );
+                    })
+                  ) : (
+                    <Badge
+                      variant={selected.includes(p.slug) ? "default" : "outline"}
+                      className={`cursor-pointer transition-colors ${
+                        selected.includes(p.slug) ? "bg-blue-600 hover:bg-blue-700" : "hover:bg-muted"
+                      }`}
+                      onClick={() => toggle(p.slug)}
+                    >
+                      {p.name}
+                      {selected.includes(p.slug) && <X className="size-3 ml-1" />}
+                    </Badge>
+                  )}
+                </div>
+              </div>
             );
           })}
         </div>
@@ -146,7 +182,7 @@ function ProductTagSelector({
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        Chọn sản phẩm để AI tham khảo tài liệu này khi tạo proposal
+        Chọn giải pháp để AI tham khảo tài liệu này khi tạo proposal
       </p>
     </div>
   );
@@ -183,11 +219,13 @@ function DriveImportDialog({
   onOpenChange,
   onStarted,
   products,
+  solutions,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onStarted: () => void;
   products: Product[];
+  solutions: SolutionItem[];
 }) {
   const [mode, setMode] = useState<ImportMode>("folder");
   const [url, setUrl] = useState("");
@@ -365,6 +403,7 @@ function DriveImportDialog({
           {/* Product Tags */}
           <ProductTagSelector
             products={products}
+            solutions={solutions}
             selected={productTags}
             onChange={setProductTags}
           />
@@ -408,11 +447,13 @@ function DriveImportDialog({
 function EditDocumentDialog({
   doc,
   products,
+  solutions,
   onClose,
   onSaved,
 }: {
   doc: KnowledgeDocument | null;
   products: Product[];
+  solutions: SolutionItem[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -427,12 +468,15 @@ function EditDocumentDialog({
     if (doc) {
       setTitle(doc.title || "");
       setDescription(doc.description || "");
-      const productSlugs = products.map((p) => p.slug);
+      const knownSlugs = new Set([
+        ...products.map((p) => p.slug),
+        ...solutions.map((s) => s.slug),
+      ]);
       const docTags = doc.tags ?? [];
-      setProductTags(docTags.filter((t) => productSlugs.includes(t)));
-      setCustomTags(docTags.filter((t) => !productSlugs.includes(t)).join(", "));
+      setProductTags(docTags.filter((t) => knownSlugs.has(t)));
+      setCustomTags(docTags.filter((t) => !knownSlugs.has(t)).join(", "));
     }
-  }, [doc, products]);
+  }, [doc, products, solutions]);
 
   const handleAutoSummary = async () => {
     if (!doc) return;
@@ -525,6 +569,7 @@ function EditDocumentDialog({
           </div>
           <ProductTagSelector
             products={products}
+            solutions={solutions}
             selected={productTags}
             onChange={setProductTags}
           />
@@ -1072,6 +1117,7 @@ export default function KnowledgePage() {
 
   // Products for tag filter
   const [products, setProducts] = useState<Product[]>([]);
+  const [solutions, setSolutions] = useState<SolutionItem[]>([]);
   const [productFilter, setProductFilter] = useState<string>("");
 
   // Sources
@@ -1143,6 +1189,13 @@ export default function KnowledgePage() {
       setProducts(data);
     }).catch((err) => {
       console.error("[Knowledge] Failed to load products:", err?.message);
+    });
+    solutionApi.list().then((res) => {
+      const data = res.data ?? [];
+      console.log(`[Knowledge] Loaded ${data.length} solutions`);
+      setSolutions(data);
+    }).catch((err) => {
+      console.error("[Knowledge] Failed to load solutions:", err?.message);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1663,6 +1716,7 @@ export default function KnowledgePage() {
 
             <ProductTagSelector
               products={products}
+              solutions={solutions}
               selected={uploadProductTags}
               onChange={setUploadProductTags}
             />
@@ -1698,12 +1752,14 @@ export default function KnowledgePage() {
           fetchSources();
         }}
         products={products}
+        solutions={solutions}
       />
 
       {/* Edit Document Dialog */}
       <EditDocumentDialog
         doc={editDoc}
         products={products}
+        solutions={solutions}
         onClose={() => setEditDoc(null)}
         onSaved={fetchDocs}
       />

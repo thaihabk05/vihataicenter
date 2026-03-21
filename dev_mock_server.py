@@ -370,6 +370,177 @@ def _init_products():
 _init_products()
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# SOLUTIONS (customer-facing names/use-cases linking to Products)
+# ═══════════════════════════════════════════════════════════════════════════════
+SOLUTIONS: dict = {}  # solution_id -> solution dict
+SOLUTIONS_JSON_PATH = Path(__file__).parent / "data" / "solutions.json"
+
+def _save_solutions():
+    """Persist SOLUTIONS to JSON."""
+    try:
+        SOLUTIONS_JSON_PATH.write_text(json.dumps(SOLUTIONS, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    except Exception as e:
+        print(f"[Solutions] Save error: {e}")
+
+def _init_solutions():
+    """Load solutions from JSON file, or seed defaults if no file exists."""
+    global SOLUTIONS
+
+    if SOLUTIONS_JSON_PATH.exists():
+        try:
+            SOLUTIONS = json.loads(SOLUTIONS_JSON_PATH.read_text(encoding="utf-8"))
+            print(f"[Solutions] Loaded {len(SOLUTIONS)} solutions from {SOLUTIONS_JSON_PATH.name}")
+            return
+        except Exception as e:
+            print(f"[Solutions] Load error: {e}, will seed defaults")
+            SOLUTIONS = {}
+
+    # Seed default solutions by mapping old product slugs
+    now = datetime.utcnow().isoformat()
+
+    # Helper: find product by slug
+    def _find_product_id(slug: str) -> str:
+        for pid, p in PRODUCTS.items():
+            if p.get("slug") == slug:
+                return pid
+        return ""
+
+    # First, ensure OMICall and eSMS products exist (merge from old tong_dai/da_kenh, sms_brandname/zbs)
+    omicall_id = _find_product_id("omicall")
+    if not omicall_id:
+        # Create OMICall product by merging tong_dai + da_kenh info
+        tong_dai = next((p for p in PRODUCTS.values() if p.get("slug") == "tong_dai"), None)
+        da_kenh = next((p for p in PRODUCTS.values() if p.get("slug") == "da_kenh"), None)
+        omicall_id = str(uuid.uuid4())[:8]
+        merged_features = list(dict.fromkeys(
+            (tong_dai or {}).get("features", []) + (da_kenh or {}).get("features", [])
+        ))
+        merged_use_cases = list(dict.fromkeys(
+            (tong_dai or {}).get("use_cases", []) + (da_kenh or {}).get("use_cases", [])
+        ))
+        merged_industries = list(dict.fromkeys(
+            (tong_dai or {}).get("target_industries", []) + (da_kenh or {}).get("target_industries", [])
+        ))
+        merged_advantages = list(dict.fromkeys(
+            (tong_dai or {}).get("competitive_advantages", []) + (da_kenh or {}).get("competitive_advantages", [])
+        ))
+        merged_integrations = list(dict.fromkeys(
+            (tong_dai or {}).get("integration_options", []) + (da_kenh or {}).get("integration_options", [])
+        ))
+        PRODUCTS[omicall_id] = {
+            "id": omicall_id,
+            "tenant_id": DEFAULT_TENANT_ID,
+            "slug": "omicall",
+            "name": "OMICall",
+            "short_description": "Nền tảng tổng đài đa kênh thông minh cho doanh nghiệp",
+            "full_description": "OMICall là nền tảng tổng đài đa kênh (Omnichannel Contact Center) của ViHAT, tích hợp thoại, Zalo, Facebook, Email, Live Chat vào 1 giao diện. Hỗ trợ Cloud PBX, ACD, IVR, ghi âm, giám sát realtime, và tích hợp CRM.",
+            "features": merged_features,
+            "use_cases": merged_use_cases,
+            "target_industries": merged_industries,
+            "pricing_model": "Gói thuê bao theo số lượng agent/tháng. Có gói Starter, Business, Enterprise.",
+            "competitive_advantages": merged_advantages,
+            "integration_options": merged_integrations,
+            "status": "active",
+            "sort_order": 0,
+            "created_at": now,
+            "updated_at": now,
+        }
+        PRODUCT_VERSIONS[omicall_id] = []
+        # Remove old tong_dai and da_kenh products
+        for pid in list(PRODUCTS.keys()):
+            if PRODUCTS[pid].get("slug") in ("tong_dai", "da_kenh"):
+                del PRODUCTS[pid]
+                PRODUCT_VERSIONS.pop(pid, None)
+        _save_products()
+        print("[Solutions] Created OMICall product (merged from tong_dai + da_kenh)")
+
+    esms_id = _find_product_id("esms")
+    if not esms_id:
+        # Create eSMS product by merging sms_brandname + zbs info
+        sms = next((p for p in PRODUCTS.values() if p.get("slug") == "sms_brandname"), None)
+        zbs = next((p for p in PRODUCTS.values() if p.get("slug") == "zbs"), None)
+        esms_id = str(uuid.uuid4())[:8]
+        merged_features = list(dict.fromkeys(
+            (sms or {}).get("features", []) + (zbs or {}).get("features", [])
+        ))
+        merged_use_cases = list(dict.fromkeys(
+            (sms or {}).get("use_cases", []) + (zbs or {}).get("use_cases", [])
+        ))
+        merged_industries = list(dict.fromkeys(
+            (sms or {}).get("target_industries", []) + (zbs or {}).get("target_industries", [])
+        ))
+        merged_advantages = list(dict.fromkeys(
+            (sms or {}).get("competitive_advantages", []) + (zbs or {}).get("competitive_advantages", [])
+        ))
+        merged_integrations = list(dict.fromkeys(
+            (sms or {}).get("integration_options", []) + (zbs or {}).get("integration_options", [])
+        ))
+        PRODUCTS[esms_id] = {
+            "id": esms_id,
+            "tenant_id": DEFAULT_TENANT_ID,
+            "slug": "esms",
+            "name": "eSMS",
+            "short_description": "Nền tảng gửi tin nhắn đa kênh: SMS Brandname, ZNS, Zalo OA",
+            "full_description": "eSMS là nền tảng nhắn tin của ViHAT, hỗ trợ gửi SMS Brandname (CSKH, Marketing, OTP), ZNS qua Zalo OA, và thông báo giao dịch. Kết nối trực tiếp nhà mạng, tỉ lệ gửi thành công cao.",
+            "features": merged_features,
+            "use_cases": merged_use_cases,
+            "target_industries": merged_industries,
+            "pricing_model": "Trả theo số lượng tin nhắn gửi thành công.",
+            "competitive_advantages": merged_advantages,
+            "integration_options": merged_integrations,
+            "status": "active",
+            "sort_order": 1,
+            "created_at": now,
+            "updated_at": now,
+        }
+        PRODUCT_VERSIONS[esms_id] = []
+        # Remove old sms_brandname and zbs products
+        for pid in list(PRODUCTS.keys()):
+            if PRODUCTS[pid].get("slug") in ("sms_brandname", "zbs"):
+                del PRODUCTS[pid]
+                PRODUCT_VERSIONS.pop(pid, None)
+        _save_products()
+        print("[Solutions] Created eSMS product (merged from sms_brandname + zbs)")
+
+    # Now seed solutions
+    seed_solutions = [
+        {"name": "Tổng đài ảo", "slug": "tong_dai", "description": "Giải pháp tổng đài IP đám mây (Cloud PBX) cho doanh nghiệp", "product_slug": "omicall", "aliases": ["cloud pbx", "tổng đài ip", "tổng đài cloud", "virtual pbx"], "sort_order": 0},
+        {"name": "Đa kênh / Omnichannel", "slug": "da_kenh", "description": "Giải pháp chăm sóc khách hàng đa kênh hợp nhất", "product_slug": "omicall", "aliases": ["omnichannel", "contact center", "đa kênh", "tổng đài đa kênh"], "sort_order": 1},
+        {"name": "SMS Brandname", "slug": "sms_brandname", "description": "Gửi SMS thương hiệu hàng loạt với tên doanh nghiệp", "product_slug": "esms", "aliases": ["tin nhắn thương hiệu", "sms otp", "sms marketing"], "sort_order": 2},
+        {"name": "ZNS / Zalo Business", "slug": "zbs", "description": "Gửi thông báo ZNS qua Zalo Official Account", "product_slug": "esms", "aliases": ["zalo notification", "zns", "zalo oa", "zalo business solution"], "sort_order": 3},
+        {"name": "Quản lý Zalo cá nhân", "slug": "p_zalo", "description": "Quản lý bán hàng qua Zalo cá nhân tập trung", "product_slug": "p_zalo", "aliases": ["p-zalo", "zalo sales"], "sort_order": 4},
+        {"name": "Nạp tiền tự động", "slug": "topup", "description": "Nạp tiền điện thoại/data tự động cho khách hàng", "product_slug": "topup", "aliases": ["nạp thẻ", "topup mobile"], "sort_order": 5},
+        {"name": "Mini App Zalo", "slug": "miniapp", "description": "Xây dựng Mini App trên Zalo cho doanh nghiệp", "product_slug": "miniapp", "aliases": ["zalo miniapp", "mini app"], "sort_order": 6},
+        {"name": "Robot gọi điện AI", "slug": "callbot_ai", "description": "Robot gọi điện tự động bằng AI cho nhắc nợ, telesales, khảo sát", "product_slug": "callbot_ai", "aliases": ["callbot", "auto call", "ai calling"], "sort_order": 7},
+        {"name": "Chatbot tự động", "slug": "chatbot_ai", "description": "Chatbot AI tự động trả lời khách hàng đa kênh 24/7", "product_slug": "chatbot_ai", "aliases": ["chatbot", "ai chat", "trả lời tự động"], "sort_order": 8},
+    ]
+
+    for s in seed_solutions:
+        sid = str(uuid.uuid4())[:8]
+        product_id = _find_product_id(s["product_slug"])
+        if not product_id:
+            print(f"[Solutions] Warning: product '{s['product_slug']}' not found for solution '{s['name']}'")
+            continue
+        SOLUTIONS[sid] = {
+            "id": sid,
+            "tenant_id": DEFAULT_TENANT_ID,
+            "name": s["name"],
+            "slug": s["slug"],
+            "description": s["description"],
+            "product_id": product_id,
+            "aliases": s.get("aliases", []),
+            "status": "active",
+            "sort_order": s.get("sort_order", 0),
+            "created_at": now,
+            "updated_at": now,
+        }
+
+    _save_solutions()
+    print(f"[Solutions] Seeded {len(SOLUTIONS)} default solutions")
+
+_init_solutions()
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # VERSION SERVICE (reusable for products, rfi_templates, etc.)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -2908,8 +3079,14 @@ def _get_legal_entities() -> list:
 LEGAL_ENTITIES = _get_legal_entities()  # backward compat
 
 def _load_products_config() -> list:
-    """Legacy: return products as simple {id, label} for backward compat."""
-    return [{"id": p["slug"], "label": p["name"]} for p in PRODUCTS.values() if p.get("status") == "active"]
+    """Legacy: return products + solutions as {id, label, type} for backward compat."""
+    result = [{"id": p["slug"], "label": p["name"], "type": "product"}
+              for p in PRODUCTS.values() if p.get("status") == "active"]
+    result += [{"id": s["slug"], "label": s["name"], "type": "solution",
+                "product_id": s.get("product_id", ""),
+                "product_slug": next((p["slug"] for p in PRODUCTS.values() if p["id"] == s.get("product_id")), "")}
+               for s in SOLUTIONS.values() if s.get("status") == "active"]
+    return result
 
 def _save_products_config(data: list):
     """Legacy: no-op, products now stored in-memory."""
@@ -3029,13 +3206,20 @@ async def list_products():
     products = [p for p in PRODUCTS.values()
                 if p.get("tenant_id") == DEFAULT_TENANT_ID and p.get("status") != "deprecated"]
     products.sort(key=lambda x: x.get("sort_order", 0))
-    # Add version count and related docs count
+    # Add version count, solutions count, and related docs count
     for p in products:
         p["version_count"] = len(PRODUCT_VERSIONS.get(p["id"], []))
-        # Count knowledge docs with matching tag
+        # Get solutions for this product
+        product_solutions = [s for s in SOLUTIONS.values()
+                             if s.get("product_id") == p["id"] and s.get("status") == "active"]
+        p["solutions_count"] = len(product_solutions)
+        p["solutions"] = sorted(product_solutions, key=lambda x: x.get("sort_order", 0))
+        # Count knowledge docs matching product slug OR any solution slug
+        all_slugs = {p["slug"]}
+        all_slugs.update(s["slug"] for s in product_solutions)
         p["related_docs_count"] = sum(
             1 for d in FILE_REGISTRY.values()
-            if p["slug"] in (d.get("tags") or [])
+            if all_slugs.intersection(set(d.get("tags") or []))
         )
     return products
 
@@ -3050,9 +3234,15 @@ async def get_product(product_id: str):
         raise HTTPException(404, "Product not found")
     result = {**product}
     result["version_count"] = len(PRODUCT_VERSIONS.get(product["id"], []))
+    product_solutions = [s for s in SOLUTIONS.values()
+                         if s.get("product_id") == product["id"] and s.get("status") == "active"]
+    result["solutions_count"] = len(product_solutions)
+    result["solutions"] = sorted(product_solutions, key=lambda x: x.get("sort_order", 0))
+    all_slugs = {product["slug"]}
+    all_slugs.update(s["slug"] for s in product_solutions)
     result["related_docs_count"] = sum(
         1 for d in FILE_REGISTRY.values()
-        if product["slug"] in (d.get("tags") or [])
+        if all_slugs.intersection(set(d.get("tags") or []))
     )
     return result
 
@@ -3195,8 +3385,138 @@ async def get_product_documents(product_id: str):
     product = PRODUCTS.get(product_id) or next((p for p in PRODUCTS.values() if p["slug"] == product_id), None)
     if not product:
         raise HTTPException(404, "Product not found")
-    docs = [d for d in FILE_REGISTRY.values() if product["slug"] in (d.get("tags") or [])]
+    # Collect all slugs: product slug + all its solution slugs
+    product_slugs = {product["slug"]}
+    product_slugs.update(
+        s["slug"] for s in SOLUTIONS.values()
+        if s.get("product_id") == product["id"] and s.get("status") == "active"
+    )
+    docs = [d for d in FILE_REGISTRY.values()
+            if product_slugs.intersection(set(d.get("tags") or []))]
     return docs
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SOLUTIONS API
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SolutionCreateRequest(BaseModel):
+    name: str
+    slug: str = ""
+    description: str = ""
+    product_id: str
+    aliases: list = []
+    sort_order: int = 0
+
+class SolutionUpdateRequest(BaseModel):
+    name: str = ""
+    slug: str = ""
+    description: str = ""
+    product_id: str = ""
+    aliases: list = []
+    sort_order: int = 0
+
+@app.get("/api/v1/solutions")
+async def list_solutions():
+    """List all active solutions with parent product info."""
+    solutions = [s for s in SOLUTIONS.values()
+                 if s.get("tenant_id") == DEFAULT_TENANT_ID and s.get("status") != "deprecated"]
+    solutions.sort(key=lambda x: x.get("sort_order", 0))
+    for s in solutions:
+        parent = PRODUCTS.get(s.get("product_id", ""))
+        s["product_name"] = parent["name"] if parent else ""
+        s["product_slug"] = parent["slug"] if parent else ""
+        # Count docs tagged with this solution slug
+        s["related_docs_count"] = sum(
+            1 for d in FILE_REGISTRY.values()
+            if s["slug"] in (d.get("tags") or [])
+        )
+    return solutions
+
+@app.get("/api/v1/solutions/{solution_id}")
+async def get_solution(solution_id: str):
+    """Get solution by ID or slug."""
+    solution = SOLUTIONS.get(solution_id)
+    if not solution:
+        solution = next((s for s in SOLUTIONS.values() if s["slug"] == solution_id), None)
+    if not solution:
+        raise HTTPException(404, "Solution not found")
+    result = {**solution}
+    parent = PRODUCTS.get(result.get("product_id", ""))
+    result["product_name"] = parent["name"] if parent else ""
+    result["product_slug"] = parent["slug"] if parent else ""
+    return result
+
+@app.post("/api/v1/solutions")
+async def create_solution(req: SolutionCreateRequest):
+    """Create a new solution linked to a product."""
+    # Validate product exists
+    if not PRODUCTS.get(req.product_id):
+        raise HTTPException(400, f"Product '{req.product_id}' not found")
+    # Auto-generate slug
+    slug = req.slug.strip()
+    if not slug:
+        slug = unicodedata.normalize("NFD", req.name.lower())
+        slug = "".join(c for c in slug if not unicodedata.combining(c))
+        slug = slug.replace("đ", "d").replace(" ", "_").replace("/", "_")
+        slug = slug or f"solution_{uuid.uuid4().hex[:6]}"
+    # Check slug uniqueness across products and solutions
+    existing_slugs = {p["slug"] for p in PRODUCTS.values()}
+    existing_slugs.update(s["slug"] for s in SOLUTIONS.values())
+    if slug in existing_slugs:
+        raise HTTPException(400, f"Slug '{slug}' already exists")
+    now = datetime.utcnow().isoformat()
+    sid = str(uuid.uuid4())[:8]
+    SOLUTIONS[sid] = {
+        "id": sid,
+        "tenant_id": DEFAULT_TENANT_ID,
+        "name": req.name,
+        "slug": slug,
+        "description": req.description,
+        "product_id": req.product_id,
+        "aliases": req.aliases,
+        "status": "active",
+        "sort_order": req.sort_order,
+        "created_at": now,
+        "updated_at": now,
+    }
+    _save_solutions()
+    return SOLUTIONS[sid]
+
+@app.put("/api/v1/solutions/{solution_id}")
+async def update_solution(solution_id: str, req: SolutionUpdateRequest):
+    """Update a solution."""
+    solution = SOLUTIONS.get(solution_id)
+    if not solution:
+        raise HTTPException(404, "Solution not found")
+    if req.name:
+        solution["name"] = req.name
+    if req.slug:
+        solution["slug"] = req.slug
+    if req.description:
+        solution["description"] = req.description
+    if req.product_id:
+        if not PRODUCTS.get(req.product_id):
+            raise HTTPException(400, f"Product '{req.product_id}' not found")
+        solution["product_id"] = req.product_id
+    if req.aliases is not None:
+        solution["aliases"] = req.aliases
+    if req.sort_order is not None:
+        solution["sort_order"] = req.sort_order
+    solution["updated_at"] = datetime.utcnow().isoformat()
+    _save_solutions()
+    return solution
+
+@app.delete("/api/v1/solutions/{solution_id}")
+async def delete_solution(solution_id: str):
+    """Soft-delete a solution."""
+    solution = SOLUTIONS.get(solution_id)
+    if not solution:
+        raise HTTPException(404, "Solution not found")
+    solution["status"] = "deprecated"
+    solution["updated_at"] = datetime.utcnow().isoformat()
+    _save_solutions()
+    return {"ok": True}
 
 
 # --- RFI Templates API ---

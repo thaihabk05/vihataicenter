@@ -140,6 +140,15 @@ export const productApi = {
   getDocuments: (id: string) => apiClient.get(`/products/${id}/documents`),
 };
 
+// Solutions (customer-facing names linking to Products)
+export const solutionApi = {
+  list: () => apiClient.get('/solutions'),
+  get: (id: string) => apiClient.get(`/solutions/${id}`),
+  create: (data: any) => apiClient.post('/solutions', data),
+  update: (id: string, data: any) => apiClient.put(`/solutions/${id}`, data),
+  delete: (id: string) => apiClient.delete(`/solutions/${id}`),
+};
+
 // Proposals
 export const proposalApi = {
   // Legacy products config (backward compat)

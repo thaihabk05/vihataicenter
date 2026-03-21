@@ -1,0 +1,127 @@
+{
+  "ee2c5dff": [
+    {
+      "id": "98bc3fba",
+      "version_number": 1,
+      "version_label": "v1",
+      "changed_by": "",
+      "change_summary": "",
+      "snapshot": {
+        "slug": "tong_dai",
+        "name": "Tổng đài",
+        "short_description": "Giải pháp tổng đài IP đám mây cho doanh nghiệp",
+        "full_description": "Hệ thống tổng đài IP đám mây (Cloud PBX/Contact Center) cho phép doanh nghiệp quản lý cuộc gọi inbound/outbound, hỗ trợ phân phối cuộc gọi thông minh ACD, IVR đa cấp, ghi âm, giám sát realtime, và tích hợp CRM.",
+        "features": [
+          "Cloud PBX",
+          "ACD - Phân phối cuộc gọi thông minh",
+          "IVR đa cấp",
+          "Ghi âm cuộc gọi",
+          "Giám sát realtime",
+          "Báo cáo thống kê",
+          "Click-to-call",
+          "Softphone/WebRTC",
+          "API tích hợp CRM"
+        ],
+        "use_cases": [
+          "Tổng đài CSKH inbound",
+          "Telesales outbound",
+          "Hotline doanh nghiệp",
+          "Contact Center đa kênh"
+        ],
+        "target_industries": [
+          "chung",
+          "ban_le",
+          "y_te",
+          "bat_dong_san",
+          "fmcg"
+        ],
+        "pricing_model": "Gói thuê bao theo số lượng agent/tháng. Có gói Starter, Business, Enterprise.",
+        "competitive_advantages": [
+          "Triển khai nhanh trong 24h",
+          "Không cần đầu tư hạ tầng",
+          "Tích hợp sẵn eSMS, Zalo OA",
+          "SLA 99.9%",
+          "AI routing thông minh"
+        ],
+        "integration_options": [
+          "CRM (Salesforce, HubSpot, Zoho)",
+          "ERP",
+          "Zalo OA",
+          "Facebook Messenger",
+          "Email"
+        ],
+        "status": "active",
+        "sort_order": 0,
+        "updated_at": "2026-03-20T11:19:09.238253",
+        "version_count": 0,
+        "related_docs_count": 0
+      },
+      "created_at": "2026-03-21T02:54:02.320965"
+    }
+  ],
+  "2d9c0311": [
+    {
+      "id": "e6d44c0f",
+      "version_number": 1,
+      "version_label": "v1",
+      "changed_by": "",
+      "change_summary": "",
+      "snapshot": {
+        "slug": "da_kenh",
+        "name": "Đa kênh",
+        "short_description": "Nền tảng chăm sóc khách hàng đa kênh hợp nhất",
+        "full_description": "Giải pháp Omnichannel Contact Center hợp nhất tất cả kênh liên lạc (Thoại, Zalo, Facebook, Email, Live Chat, SMS) vào 1 giao diện duy nhất. Agent có thể xử lý đồng thời nhiều kênh, lịch sử tương tác khách hàng được lưu trữ xuyên suốt.",
+        "features": [
+          "Hợp nhất đa kênh",
+          "Lịch sử tương tác 360°",
+          "Phân phối ticket thông minh",
+          "SLA management",
+          "Báo cáo đa kênh",
+          "Chatbot tích hợp",
+          "Knowledge Base nội bộ"
+        ],
+        "use_cases": [
+          "CSKH đa kênh",
+          "Help Desk nội bộ",
+          "Social Commerce support",
+          "Quản lý ticket"
+        ],
+        "target_industries": [
+          "chung",
+          "ban_le",
+          "thoi_trang",
+          "fmcg"
+        ],
+        "pricing_model": "Gói theo số agent + số kênh kết nối. Thanh toán tháng/năm.",
+        "competitive_advantages": [
+          "1 giao diện cho tất cả kênh",
+          "Không bỏ lỡ tin nhắn",
+          "Tích hợp Zalo OA chính thức",
+          "AI auto-reply"
+        ],
+        "integration_options": [
+          "Zalo OA",
+          "Facebook Page",
+          "Instagram",
+          "Email SMTP",
+          "Website Live Chat",
+          "CRM"
+        ],
+        "status": "active",
+        "sort_order": 1,
+        "updated_at": "2026-03-20T11:19:09.238253",
+        "version_count": 0,
+        "related_docs_count": 0
+      },
+      "created_at": "2026-03-21T02:53:54.938996"
+    }
+  ],
+  "72749769": [],
+  "1c2b9a33": [],
+  "81d138af": [],
+  "18e46d60": [],
+  "eec30266": [],
+  "1099b6c8": [],
+  "fd056fed": [],
+  "4491f562": []
+}

@@ -1,0 +1,366 @@
+{
+  "1d0f9f5c": {
+    "id": "1d0f9f5c",
+    "tenant_id": "t-vihat-001",
+    "slug": "p_zalo",
+    "name": "Zalo cá nhân (P-Zalo)",
+    "short_description": "Quản lý bán hàng qua Zalo cá nhân tập trung",
+    "full_description": "Giải pháp quản lý tập trung các tài khoản Zalo cá nhân của đội ngũ sales. Giám sát hội thoại, phân tích hiệu suất, tự động phân phối lead, và đảm bảo data khách hàng thuộc về doanh nghiệp.",
+    "features": [
+      "Quản lý nhiều Zalo cá nhân",
+      "Giám sát hội thoại",
+      "Phân phối lead tự động",
+      "Báo cáo hiệu suất sale",
+      "Backup dữ liệu chat",
+      "Template tin nhắn"
+    ],
+    "use_cases": [
+      "Quản lý đội sales qua Zalo",
+      "Bán hàng online",
+      "CSKH cá nhân hóa"
+    ],
+    "target_industries": [
+      "ban_le",
+      "lam_dep",
+      "thoi_trang",
+      "bat_dong_san"
+    ],
+    "pricing_model": "Gói theo số tài khoản Zalo quản lý.",
+    "competitive_advantages": [
+      "Không mất data khi sale nghỉ việc",
+      "Giám sát chất lượng CSKH",
+      "Tự động gán khách hàng mới"
+    ],
+    "integration_options": [
+      "CRM",
+      "Zalo OA",
+      "Hệ thống ERP"
+    ],
+    "status": "active",
+    "sort_order": 2,
+    "created_at": "2026-03-21T03:40:24.075004",
+    "updated_at": "2026-03-21T03:40:24.075004"
+  },
+  "371fa256": {
+    "id": "371fa256",
+    "tenant_id": "t-vihat-001",
+    "slug": "topup",
+    "name": "Topup",
+    "short_description": "Nạp tiền điện thoại/data tự động cho khách hàng",
+    "full_description": "Dịch vụ nạp tiền điện thoại, data mobile tự động qua API. Dùng cho chương trình loyalty, khuyến mãi, hoàn tiền, tặng quà khách hàng bằng giá trị nạp tiền điện thoại.",
+    "features": [
+      "Nạp tiền tự động qua API",
+      "Hỗ trợ tất cả nhà mạng VN",
+      "Nạp data mobile",
+      "Báo cáo realtime",
+      "Webhook callback"
+    ],
+    "use_cases": [
+      "Chương trình loyalty",
+      "Khuyến mãi nạp thẻ",
+      "Hoàn tiền cho KH",
+      "Thưởng nhân viên"
+    ],
+    "target_industries": [
+      "ban_le",
+      "fmcg",
+      "chung"
+    ],
+    "pricing_model": "Chiết khấu theo tổng giá trị nạp/tháng.",
+    "competitive_advantages": [
+      "Kết nối trực tiếp nhà mạng",
+      "Nạp tức thì <5s",
+      "API đơn giản",
+      "Không giới hạn số lượng"
+    ],
+    "integration_options": [
+      "API RESTful",
+      "Webhook callback",
+      "CRM",
+      "Loyalty platform"
+    ],
+    "status": "active",
+    "sort_order": 5,
+    "created_at": "2026-03-21T03:40:24.075004",
+    "updated_at": "2026-03-21T03:40:24.075004"
+  },
+  "a34600c2": {
+    "id": "a34600c2",
+    "tenant_id": "t-vihat-001",
+    "slug": "miniapp",
+    "name": "MiniApp",
+    "short_description": "Xây dựng Mini App trên Zalo cho doanh nghiệp",
+    "full_description": "Dịch vụ phát triển Mini App chạy trên nền tảng Zalo. Cho phép doanh nghiệp tạo ứng dụng nhỏ gọn trong Zalo để bán hàng, đặt lịch, tích điểm, thanh toán mà không cần khách hàng cài app riêng.",
+    "features": [
+      "E-commerce Mini App",
+      "Booking/đặt lịch",
+      "Loyalty/tích điểm",
+      "Thanh toán ZaloPay",
+      "Push notification",
+      "Quản lý thành viên"
+    ],
+    "use_cases": [
+      "Bán hàng online trên Zalo",
+      "Đặt lịch dịch vụ",
+      "Chương trình khách hàng thân thiết",
+      "Menu nhà hàng"
+    ],
+    "target_industries": [
+      "ban_le",
+      "lam_dep",
+      "suc_khoe",
+      "thoi_trang"
+    ],
+    "pricing_model": "Phí phát triển + phí duy trì hàng tháng.",
+    "competitive_advantages": [
+      "Không cần cài app riêng",
+      "75M+ người dùng Zalo",
+      "Tích hợp thanh toán ZaloPay",
+      "UX native trên Zalo"
+    ],
+    "integration_options": [
+      "Zalo OA",
+      "ZaloPay",
+      "API backend",
+      "CRM"
+    ],
+    "status": "active",
+    "sort_order": 6,
+    "created_at": "2026-03-21T03:40:24.075004",
+    "updated_at": "2026-03-21T03:40:24.075004"
+  },
+  "cc362754": {
+    "id": "cc362754",
+    "tenant_id": "t-vihat-001",
+    "slug": "callbot_ai",
+    "name": "Callbot AI",
+    "short_description": "Robot gọi điện tự động bằng AI",
+    "full_description": "Giải pháp Callbot sử dụng AI (NLP, TTS, ASR) để thực hiện cuộc gọi tự động. Callbot có thể gọi hàng ngàn cuộc/ngày cho các kịch bản: nhắc nợ, xác nhận đơn hàng, khảo sát, telesales, nhắc lịch hẹn.",
+    "features": [
+      "Gọi tự động hàng ngàn cuộc/ngày",
+      "Nhận diện giọng nói (ASR)",
+      "Tổng hợp giọng nói tự nhiên (TTS)",
+      "Kịch bản linh hoạt (drag-drop)",
+      "Chuyển agent khi cần",
+      "Báo cáo kết quả chi tiết"
+    ],
+    "use_cases": [
+      "Nhắc nợ/thanh toán",
+      "Xác nhận đơn hàng",
+      "Khảo sát khách hàng",
+      "Telesales tự động",
+      "Nhắc lịch hẹn"
+    ],
+    "target_industries": [
+      "chung",
+      "ban_le",
+      "y_te",
+      "bat_dong_san",
+      "fmcg"
+    ],
+    "pricing_model": "Theo số phút gọi thành công + phí setup kịch bản.",
+    "competitive_advantages": [
+      "Giọng nói tự nhiên như người thật",
+      "Xử lý 10,000+ cuộc gọi/ngày",
+      "Tỉ lệ hoàn thành >85%",
+      "Tiết kiệm 70% chi phí nhân sự"
+    ],
+    "integration_options": [
+      "API RESTful",
+      "CRM",
+      "Tổng đài OmiCall",
+      "Webhook callback"
+    ],
+    "status": "active",
+    "sort_order": 7,
+    "created_at": "2026-03-21T03:40:24.075004",
+    "updated_at": "2026-03-21T03:40:24.075004"
+  },
+  "05531aea": {
+    "id": "05531aea",
+    "tenant_id": "t-vihat-001",
+    "slug": "chatbot_ai",
+    "name": "Chatbot AI",
+    "short_description": "Chatbot AI tự động trả lời khách hàng đa kênh",
+    "full_description": "Giải pháp Chatbot AI sử dụng NLP/LLM để tự động trả lời khách hàng trên nhiều kênh (Zalo, Facebook, Website, App). Chatbot học từ knowledge base doanh nghiệp, hỗ trợ 24/7, và chuyển agent khi cần.",
+    "features": [
+      "AI NLP/LLM hiểu ngữ cảnh",
+      "Đa kênh (Zalo, FB, Web, App)",
+      "Học từ Knowledge Base",
+      "Chuyển agent thông minh",
+      "Phân tích intent",
+      "Đa ngôn ngữ",
+      "Analytics dashboard"
+    ],
+    "use_cases": [
+      "CSKH tự động 24/7",
+      "FAQ automation",
+      "Lead qualification",
+      "Đặt hàng qua chat",
+      "Hỗ trợ kỹ thuật"
+    ],
+    "target_industries": [
+      "chung",
+      "ban_le",
+      "lam_dep",
+      "thoi_trang",
+      "fmcg"
+    ],
+    "pricing_model": "Gói theo số lượng conversation/tháng + phí training model.",
+    "competitive_advantages": [
+      "Hiểu tiếng Việt tự nhiên",
+      "Học từ dữ liệu doanh nghiệp",
+      "Tích hợp sẵn OmiCall",
+      "Chuyển đổi liền mạch Bot→Agent"
+    ],
+    "integration_options": [
+      "Zalo OA",
+      "Facebook Messenger",
+      "Website Widget",
+      "API",
+      "CRM"
+    ],
+    "status": "active",
+    "sort_order": 8,
+    "created_at": "2026-03-21T03:40:24.075004",
+    "updated_at": "2026-03-21T03:40:24.075004"
+  },
+  "a9cb0813": {
+    "id": "a9cb0813",
+    "tenant_id": "t-vihat-001",
+    "slug": "omicall",
+    "name": "OMICall",
+    "short_description": "Nền tảng tổng đài đa kênh thông minh cho doanh nghiệp",
+    "full_description": "OMICall là nền tảng tổng đài đa kênh (Omnichannel Contact Center) của ViHAT, tích hợp thoại, Zalo, Facebook, Email, Live Chat vào 1 giao diện. Hỗ trợ Cloud PBX, ACD, IVR, ghi âm, giám sát realtime, và tích hợp CRM.",
+    "features": [
+      "Cloud PBX",
+      "ACD - Phân phối cuộc gọi thông minh",
+      "IVR đa cấp",
+      "Ghi âm cuộc gọi",
+      "Giám sát realtime",
+      "Báo cáo thống kê",
+      "Click-to-call",
+      "Softphone/WebRTC",
+      "API tích hợp CRM",
+      "Hợp nhất đa kênh",
+      "Lịch sử tương tác 360°",
+      "Phân phối ticket thông minh",
+      "SLA management",
+      "Báo cáo đa kênh",
+      "Chatbot tích hợp",
+      "Knowledge Base nội bộ"
+    ],
+    "use_cases": [
+      "Tổng đài CSKH inbound",
+      "Telesales outbound",
+      "Hotline doanh nghiệp",
+      "Contact Center đa kênh",
+      "CSKH đa kênh",
+      "Help Desk nội bộ",
+      "Social Commerce support",
+      "Quản lý ticket"
+    ],
+    "target_industries": [
+      "chung",
+      "ban_le",
+      "y_te",
+      "bat_dong_san",
+      "fmcg",
+      "thoi_trang"
+    ],
+    "pricing_model": "Gói thuê bao theo số lượng agent/tháng. Có gói Starter, Business, Enterprise.",
+    "competitive_advantages": [
+      "Triển khai nhanh trong 24h",
+      "Không cần đầu tư hạ tầng",
+      "Tích hợp sẵn eSMS, Zalo OA",
+      "SLA 99.9%",
+      "AI routing thông minh",
+      "1 giao diện cho tất cả kênh",
+      "Không bỏ lỡ tin nhắn",
+      "Tích hợp Zalo OA chính thức",
+      "AI auto-reply"
+    ],
+    "integration_options": [
+      "CRM (Salesforce, HubSpot, Zoho)",
+      "ERP",
+      "Zalo OA",
+      "Facebook Messenger",
+      "Email",
+      "Facebook Page",
+      "Instagram",
+      "Email SMTP",
+      "Website Live Chat",
+      "CRM"
+    ],
+    "status": "active",
+    "sort_order": 0,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "174a1d13": {
+    "id": "174a1d13",
+    "tenant_id": "t-vihat-001",
+    "slug": "esms",
+    "name": "eSMS",
+    "short_description": "Nền tảng gửi tin nhắn đa kênh: SMS Brandname, ZNS, Zalo OA",
+    "full_description": "eSMS là nền tảng nhắn tin của ViHAT, hỗ trợ gửi SMS Brandname (CSKH, Marketing, OTP), ZNS qua Zalo OA, và thông báo giao dịch. Kết nối trực tiếp nhà mạng, tỉ lệ gửi thành công cao.",
+    "features": [
+      "SMS Brandname CSKH",
+      "SMS Marketing",
+      "SMS OTP",
+      "API gửi tin tự động",
+      "Lập lịch gửi",
+      "Báo cáo delivery",
+      "Template quản lý",
+      "ZNS Template Message",
+      "Zalo OA Follower management",
+      "Broadcast message",
+      "API tích hợp",
+      "Báo cáo tương tác",
+      "Mini App integration"
+    ],
+    "use_cases": [
+      "Gửi OTP xác thực",
+      "Thông báo giao dịch",
+      "Chăm sóc khách hàng",
+      "Marketing promotion",
+      "Thông báo đơn hàng",
+      "Nhắc lịch hẹn",
+      "CSKH qua Zalo",
+      "Remarketing"
+    ],
+    "target_industries": [
+      "chung",
+      "ban_le",
+      "y_te",
+      "fmcg",
+      "bat_dong_san",
+      "lam_dep",
+      "suc_khoe"
+    ],
+    "pricing_model": "Trả theo số lượng tin nhắn gửi thành công.",
+    "competitive_advantages": [
+      "Kết nối trực tiếp nhà mạng",
+      "Tỉ lệ gửi thành công >98%",
+      "API đơn giản",
+      "Hỗ trợ Unicode tiếng Việt",
+      "Tỉ lệ đọc >90%",
+      "Chi phí thấp hơn SMS",
+      "Rich media (hình ảnh, nút bấm)",
+      "Tích hợp Mini App"
+    ],
+    "integration_options": [
+      "API RESTful",
+      "SMPP",
+      "Webhook callback",
+      "CRM",
+      "ERP",
+      "Zalo OA SDK",
+      "Webhook"
+    ],
+    "status": "active",
+    "sort_order": 1,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  }
+}

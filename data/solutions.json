@@ -1,0 +1,155 @@
+{
+  "f75c7447": {
+    "id": "f75c7447",
+    "tenant_id": "t-vihat-001",
+    "name": "Tổng đài ảo",
+    "slug": "tong_dai",
+    "description": "Giải pháp tổng đài IP đám mây (Cloud PBX) cho doanh nghiệp",
+    "product_id": "a9cb0813",
+    "aliases": [
+      "cloud pbx",
+      "tổng đài ip",
+      "tổng đài cloud",
+      "virtual pbx"
+    ],
+    "status": "active",
+    "sort_order": 0,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "9dd4ea5b": {
+    "id": "9dd4ea5b",
+    "tenant_id": "t-vihat-001",
+    "name": "Đa kênh / Omnichannel",
+    "slug": "da_kenh",
+    "description": "Giải pháp chăm sóc khách hàng đa kênh hợp nhất",
+    "product_id": "a9cb0813",
+    "aliases": [
+      "omnichannel",
+      "contact center",
+      "đa kênh",
+      "tổng đài đa kênh"
+    ],
+    "status": "active",
+    "sort_order": 1,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "a1a9a9fa": {
+    "id": "a1a9a9fa",
+    "tenant_id": "t-vihat-001",
+    "name": "SMS Brandname",
+    "slug": "sms_brandname",
+    "description": "Gửi SMS thương hiệu hàng loạt với tên doanh nghiệp",
+    "product_id": "174a1d13",
+    "aliases": [
+      "tin nhắn thương hiệu",
+      "sms otp",
+      "sms marketing"
+    ],
+    "status": "active",
+    "sort_order": 2,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "64e40fd0": {
+    "id": "64e40fd0",
+    "tenant_id": "t-vihat-001",
+    "name": "ZNS / Zalo Business",
+    "slug": "zbs",
+    "description": "Gửi thông báo ZNS qua Zalo Official Account",
+    "product_id": "174a1d13",
+    "aliases": [
+      "zalo notification",
+      "zns",
+      "zalo oa",
+      "zalo business solution"
+    ],
+    "status": "active",
+    "sort_order": 3,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "a2ab792e": {
+    "id": "a2ab792e",
+    "tenant_id": "t-vihat-001",
+    "name": "Quản lý Zalo cá nhân",
+    "slug": "p_zalo",
+    "description": "Quản lý bán hàng qua Zalo cá nhân tập trung",
+    "product_id": "1d0f9f5c",
+    "aliases": [
+      "p-zalo",
+      "zalo sales"
+    ],
+    "status": "active",
+    "sort_order": 4,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "3119b7f1": {
+    "id": "3119b7f1",
+    "tenant_id": "t-vihat-001",
+    "name": "Nạp tiền tự động",
+    "slug": "topup",
+    "description": "Nạp tiền điện thoại/data tự động cho khách hàng",
+    "product_id": "371fa256",
+    "aliases": [
+      "nạp thẻ",
+      "topup mobile"
+    ],
+    "status": "active",
+    "sort_order": 5,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "88e1531f": {
+    "id": "88e1531f",
+    "tenant_id": "t-vihat-001",
+    "name": "Mini App Zalo",
+    "slug": "miniapp",
+    "description": "Xây dựng Mini App trên Zalo cho doanh nghiệp",
+    "product_id": "a34600c2",
+    "aliases": [
+      "zalo miniapp",
+      "mini app"
+    ],
+    "status": "active",
+    "sort_order": 6,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "768921e4": {
+    "id": "768921e4",
+    "tenant_id": "t-vihat-001",
+    "name": "Robot gọi điện AI",
+    "slug": "callbot_ai",
+    "description": "Robot gọi điện tự động bằng AI cho nhắc nợ, telesales, khảo sát",
+    "product_id": "cc362754",
+    "aliases": [
+      "callbot",
+      "auto call",
+      "ai calling"
+    ],
+    "status": "active",
+    "sort_order": 7,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  },
+  "f0a77bcb": {
+    "id": "f0a77bcb",
+    "tenant_id": "t-vihat-001",
+    "name": "Chatbot tự động",
+    "slug": "chatbot_ai",
+    "description": "Chatbot AI tự động trả lời khách hàng đa kênh 24/7",
+    "product_id": "05531aea",
+    "aliases": [
+      "chatbot",
+      "ai chat",
+      "trả lời tự động"
+    ],
+    "status": "active",
+    "sort_order": 8,
+    "created_at": "2026-03-21T03:40:24.082762",
+    "updated_at": "2026-03-21T03:40:24.082762"
+  }
+}

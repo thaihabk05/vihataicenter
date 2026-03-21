@@ -39,9 +39,25 @@ import {
   ChevronLeft,
   Eye,
 } from "lucide-react";
-import { productApi, proposalApi } from "@/lib/api-client";
+import { productApi, proposalApi, solutionApi } from "@/lib/api-client";
 import { INDUSTRIES } from "@/lib/constants";
 import type { Product, ProductVersion, RFIQuestion } from "@/lib/types";
+
+interface Solution {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  product_id: string;
+  product_name?: string;
+  product_slug?: string;
+  aliases: string[];
+  status: "active" | "deprecated";
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  related_docs_count?: number;
+}
 
 /* ─── helpers ─── */
 
@@ -854,6 +870,230 @@ function ProductsTab() {
   );
 }
 
+/* ─── Tab Giải pháp (Solutions) ─── */
+
+function SolutionsTab() {
+  const [solutions, setSolutions] = useState<Solution[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingSolution, setEditingSolution] = useState<Solution | null>(null);
+
+  // Form state
+  const [formName, setFormName] = useState("");
+  const [formSlug, setFormSlug] = useState("");
+  const [formDesc, setFormDesc] = useState("");
+  const [formProductId, setFormProductId] = useState("");
+  const [formAliases, setFormAliases] = useState<string[]>([]);
+  const [formSortOrder, setFormSortOrder] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [solRes, prodRes] = await Promise.all([
+        solutionApi.list(),
+        productApi.list(),
+      ]);
+      setSolutions(solRes.data);
+      setProducts(prodRes.data);
+    } catch {
+      toast.error("Không thể tải danh sách giải pháp");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  function openCreate() {
+    setEditingSolution(null);
+    setFormName("");
+    setFormSlug("");
+    setFormDesc("");
+    setFormProductId(products[0]?.id || "");
+    setFormAliases([]);
+    setFormSortOrder(solutions.length);
+    setDialogOpen(true);
+  }
+
+  function openEdit(s: Solution) {
+    setEditingSolution(s);
+    setFormName(s.name);
+    setFormSlug(s.slug);
+    setFormDesc(s.description);
+    setFormProductId(s.product_id);
+    setFormAliases(s.aliases || []);
+    setFormSortOrder(s.sort_order);
+    setDialogOpen(true);
+  }
+
+  async function handleSave() {
+    if (!formName.trim()) { toast.error("Tên giải pháp không được trống"); return; }
+    if (!formProductId) { toast.error("Chọn sản phẩm liên kết"); return; }
+    setSaving(true);
+    try {
+      const data = {
+        name: formName.trim(),
+        slug: formSlug.trim(),
+        description: formDesc.trim(),
+        product_id: formProductId,
+        aliases: formAliases,
+        sort_order: formSortOrder,
+      };
+      if (editingSolution) {
+        await solutionApi.update(editingSolution.id, data);
+        toast.success("Đã cập nhật giải pháp");
+      } else {
+        await solutionApi.create(data);
+        toast.success("Đã tạo giải pháp mới");
+      }
+      setDialogOpen(false);
+      fetchData();
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || err?.message || "Lỗi lưu giải pháp";
+      toast.error(typeof msg === "string" ? msg : JSON.stringify(msg));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(s: Solution) {
+    if (!confirm(`Xóa giải pháp "${s.name}"?`)) return;
+    try {
+      await solutionApi.delete(s.id);
+      toast.success("Đã xóa giải pháp");
+      fetchData();
+    } catch {
+      toast.error("Lỗi xóa giải pháp");
+    }
+  }
+
+  // Group solutions by product
+  const grouped = products.map((p) => ({
+    product: p,
+    solutions: solutions.filter((s) => s.product_id === p.id),
+  }));
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <div>
+          <CardTitle className="text-lg">Giải pháp</CardTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            Quản lý giải pháp/tên gọi mà khách hàng tìm kiếm, liên kết với sản phẩm chính.
+          </p>
+        </div>
+        <Button size="sm" onClick={openCreate}>
+          <Plus className="size-4 mr-1" /> Thêm giải pháp
+        </Button>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-muted-foreground text-center py-8">Đang tải...</p>
+        ) : solutions.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">
+            Chưa có giải pháp nào. Nhấn &quot;Thêm giải pháp&quot; để bắt đầu.
+          </p>
+        ) : (
+          <div className="space-y-6">
+            {grouped.filter(g => g.solutions.length > 0).map(({ product, solutions: sols }) => (
+              <div key={product.id}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Package className="size-4 text-primary" />
+                  <span className="font-semibold">{product.name}</span>
+                  <Badge variant="outline" className="text-xs">{product.slug}</Badge>
+                </div>
+                <div className="ml-6 space-y-2">
+                  {sols.map((s) => (
+                    <div key={s.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{s.name}</span>
+                          <Badge variant="secondary" className="text-xs font-mono">{s.slug}</Badge>
+                          {(s.related_docs_count || 0) > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              <FileText className="size-3 mr-1" />{s.related_docs_count} tài liệu
+                            </Badge>
+                          )}
+                        </div>
+                        {s.description && (
+                          <p className="text-sm text-muted-foreground mt-1">{s.description}</p>
+                        )}
+                        {s.aliases.length > 0 && (
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            {s.aliases.map((a) => (
+                              <Badge key={a} variant="outline" className="text-xs bg-blue-50">{a}</Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(s)}>
+                          <Edit className="size-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(s)}>
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Create/Edit Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingSolution ? "Sửa giải pháp" : "Thêm giải pháp mới"}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <Label>Tên giải pháp *</Label>
+                <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="VD: Tổng đài ảo" />
+              </div>
+              <div>
+                <Label>Slug (tự động nếu để trống)</Label>
+                <Input value={formSlug} onChange={(e) => setFormSlug(e.target.value)} placeholder="VD: tong_dai_ao" className="font-mono" />
+              </div>
+              <div>
+                <Label>Sản phẩm liên kết *</Label>
+                <Select value={formProductId} onValueChange={(v) => setFormProductId(v ?? "")}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Chọn sản phẩm" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name} ({p.slug})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Mô tả</Label>
+                <Textarea value={formDesc} onChange={(e) => setFormDesc(e.target.value)} rows={2} placeholder="Mô tả ngắn về giải pháp" />
+              </div>
+              <div>
+                <Label>Từ khóa/Aliases (Enter để thêm)</Label>
+                <TagEditor value={formAliases} onChange={setFormAliases} placeholder="VD: cloud pbx, tổng đài ip" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>Hủy</Button>
+              <Button onClick={handleSave} disabled={saving}>
+                <Save className="size-4 mr-1" /> {saving ? "Đang lưu..." : "Lưu"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+}
+
 /* ─── Tab RFI Templates ─── */
 
 const QUESTION_TYPES: { value: RFIQuestion["type"]; label: string }[] = [
@@ -1178,11 +1418,16 @@ export default function ProposalSettingsPage() {
       <Tabs defaultValue="products">
         <TabsList>
           <TabsTrigger value="products">Sản phẩm</TabsTrigger>
+          <TabsTrigger value="solutions">Giải pháp</TabsTrigger>
           <TabsTrigger value="rfi">RFI Templates</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products" className="mt-4">
           <ProductsTab />
+        </TabsContent>
+
+        <TabsContent value="solutions" className="mt-4">
+          <SolutionsTab />
         </TabsContent>
 
         <TabsContent value="rfi" className="mt-4">
