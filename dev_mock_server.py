@@ -1443,6 +1443,10 @@ async def upload_knowledge(
     }
     save_registry()
 
+    # Auto-enrich in background (description + tags)
+    if not description:
+        asyncio.create_task(_auto_enrich_document(parent_id))
+
     return {
         "status": "success",
         "document_id": parent_id,
@@ -1710,6 +1714,133 @@ async def auto_summary(doc_id: str):
     except Exception as e:
         print(f"[AutoSummary] Error: {e}")
         raise HTTPException(500, f"Lỗi tạo tóm tắt: {str(e)}")
+
+
+async def _auto_enrich_document(doc_id: str):
+    """Background: auto-generate description + auto-tag solutions for a document."""
+    if doc_id not in FILE_REGISTRY:
+        return
+    entry = FILE_REGISTRY[doc_id]
+    if entry.get("description"):  # Already has description, skip
+        return
+    if not ANTHROPIC_API_KEY:
+        return
+
+    # Read content (reuse auto_summary logic)
+    file_name = entry.get("file_name", "")
+    file_path = entry.get("file_path", "")
+    content_text = ""
+
+    if file_path and Path(file_path).exists():
+        try:
+            file_content = Path(file_path).read_bytes()
+            ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+            if ext in ("xlsx", "xls"):
+                content_text = await asyncio.to_thread(preprocess_excel, file_content, file_name) or ""
+            elif ext in ("docx", "doc"):
+                content_text = await asyncio.to_thread(preprocess_docx, file_content, file_name) or ""
+            elif ext == "pdf":
+                def _read_pdf():
+                    import pdfplumber, tempfile as tf
+                    with tf.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                        tmp.write(file_content)
+                        tmp_path = tmp.name
+                    parts = []
+                    try:
+                        with pdfplumber.open(tmp_path) as pdf:
+                            for page in pdf.pages:
+                                text = page.extract_text()
+                                if text:
+                                    parts.append(text)
+                    finally:
+                        import os; os.unlink(tmp_path)
+                    return "\n\n".join(parts)
+                content_text = await asyncio.to_thread(_read_pdf)
+            elif ext in ("txt", "md", "csv"):
+                content_text = file_content.decode("utf-8", errors="replace")
+            elif ext in ("pptx",):
+                def _read_pptx():
+                    from pptx import Presentation
+                    import io
+                    prs = Presentation(io.BytesIO(file_content))
+                    parts = []
+                    for slide in prs.slides:
+                        for shape in slide.shapes:
+                            if shape.has_text_frame:
+                                text = shape.text_frame.text.strip()
+                                if text:
+                                    parts.append(text)
+                    return "\n\n".join(parts)
+                content_text = await asyncio.to_thread(_read_pptx)
+        except Exception as e:
+            print(f"[AutoEnrich] Read error for {file_name}: {e}")
+
+    if not content_text or len(content_text) < 20:
+        print(f"[AutoEnrich] No content for {file_name}, skipping")
+        return
+
+    truncated = content_text[:6000]
+
+    # Build solutions list for AI to choose from
+    solutions_list = []
+    for s in SOLUTIONS.values():
+        if s.get("status") == "active":
+            parent = PRODUCTS.get(s.get("product_id", ""))
+            parent_name = parent["name"] if parent else ""
+            solutions_list.append(f"- {s['slug']}: {s['name']} ({parent_name}) — {s.get('description', '')}")
+    solutions_text = "\n".join(solutions_list)
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-sonnet-4-20250514",
+                    "max_tokens": 800,
+                    "system": """Bạn là trợ lý AI phân tích tài liệu nội bộ công ty ViHAT (CPaaS/Contact Center).
+Nhiệm vụ: Đọc nội dung tài liệu và trả về JSON với 2 trường:
+1. "description": Mô tả ngắn gọn 3-5 câu bằng tiếng Việt về nội dung chính
+2. "tags": Mảng các slug giải pháp liên quan (chọn từ danh sách cho sẵn). Nếu tài liệu là thông tin chung về công ty (profile, credentials, chính sách), thêm "chung".
+
+Chỉ trả về JSON, không thêm text khác. Ví dụ: {"description": "...", "tags": ["tong_dai", "da_kenh"]}""",
+                    "messages": [{"role": "user", "content": f"Tên file: {file_name}\n\nDanh sách giải pháp:\n{solutions_text}\n\nNội dung tài liệu:\n{truncated}"}],
+                },
+            )
+            if resp.status_code == 200:
+                text = resp.json()["content"][0]["text"].strip()
+                if "```" in text:
+                    text = text.split("```")[1]
+                    if text.startswith("json"):
+                        text = text[4:]
+                    text = text.strip()
+                result = json.loads(text)
+
+                description = result.get("description", "")
+                ai_tags = result.get("tags", [])
+
+                # Validate tags against actual solution slugs
+                valid_slugs = {s["slug"] for s in SOLUTIONS.values() if s.get("status") == "active"}
+                valid_slugs.add("chung")
+                validated_tags = [t for t in ai_tags if t in valid_slugs]
+
+                # Merge with existing tags (don't overwrite manual tags)
+                existing_tags = set(entry.get("tags") or [])
+                merged_tags = list(existing_tags | set(validated_tags))
+
+                # Update entry
+                entry["description"] = description
+                entry["tags"] = merged_tags
+                save_registry()
+                print(f"[AutoEnrich] {file_name}: desc={description[:80]}... tags={merged_tags}")
+            else:
+                print(f"[AutoEnrich] Claude API error {resp.status_code}")
+    except Exception as e:
+        print(f"[AutoEnrich] Error for {file_name}: {e}")
 
 
 # --- Knowledge Sources CRUD ---
@@ -2733,6 +2864,15 @@ async def _run_drive_import(task_id: str, folder_id: str, dataset_id: str, knowl
         task["registered"] = registered_count
         task["status_detail"] = f"Hoàn tất: {result.get('synced', 0)} synced, {result.get('skipped', 0)} bỏ qua, {result.get('errors', 0)} lỗi"
         task["completed_at"] = datetime.now().isoformat()
+
+        # Auto-enrich: generate descriptions and tags for new docs
+        if source_id and source_id in DRIVE_SOURCES:
+            for did in DRIVE_SOURCES[source_id].get("document_ids", []):
+                try:
+                    await _auto_enrich_document(did)
+                except Exception as enrich_err:
+                    print(f"[AutoEnrich] Error enriching {did}: {enrich_err}")
+
     except Exception as e:
         import traceback
         task["status"] = "error"
@@ -2792,6 +2932,11 @@ async def _run_link_import(task_id: str, doc_id: str, dataset_id: str, knowledge
             task["status"] = "completed"
             task["sections_count"] = sections_count
             task["completed_at"] = datetime.now().isoformat()
+            # Auto-enrich
+            try:
+                await _auto_enrich_document(parent_id)
+            except Exception as enrich_err:
+                print(f"[AutoEnrich] Error enriching {parent_id}: {enrich_err}")
         else:
             from services.google_drive_sync import GoogleDriveSync
             syncer = GoogleDriveSync(
@@ -2857,6 +3002,11 @@ async def _run_link_import(task_id: str, doc_id: str, dataset_id: str, knowledge
             task["title"] = doc_title
             task["sections_count"] = uploaded
             task["completed_at"] = datetime.now().isoformat()
+            # Auto-enrich
+            try:
+                await _auto_enrich_document(parent_id)
+            except Exception as enrich_err:
+                print(f"[AutoEnrich] Error enriching {parent_id}: {enrich_err}")
 
     except Exception as e:
         task["status"] = "error"
@@ -3132,6 +3282,12 @@ async def _run_web_import(task_id: str, url: str, dataset_id: str, knowledge_bas
         task["sections_count"] = 1
         task["completed_at"] = datetime.now().isoformat()
         print(f"[WebImport] Completed: {title or url} ({len(page_text)} chars)")
+
+        # Auto-enrich
+        try:
+            await _auto_enrich_document(parent_id)
+        except Exception as enrich_err:
+            print(f"[AutoEnrich] Error enriching {parent_id}: {enrich_err}")
 
     except Exception as e:
         import traceback
