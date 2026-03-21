@@ -71,28 +71,74 @@ function addFooter(slide, T, label, num, total) {
   });
 }
 
-// ── SLIDE: Cover ──
+// ── SLIDE: Cover (with logos) ──
 function slideCover(pres, T, data) {
   const s = pres.addSlide();
   s.background = { color: T.bg };
+
+  // Top accent line
   s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
+
+  // ViHAT logo (top-left) — use image if available, else text
+  if (data.vihat_logo && fs.existsSync(data.vihat_logo)) {
+    s.addImage({ path: data.vihat_logo, x: 0.5, y: 0.3, w: 1.2, h: 0.6 });
+  } else {
+    s.addText(data.entity_label || "ViHAT", {
+      x: 0.5, y: 0.3, w: 2, h: 0.4, fontSize: 14, fontFace: F.h, color: T.primary, margin: 0,
+    });
+  }
+
+  // Customer logo (top-right) — use fetched logo if available
+  if (data.customer_logo && fs.existsSync(data.customer_logo)) {
+    s.addImage({ path: data.customer_logo, x: SW - 1.5, y: 0.25, w: 0.8, h: 0.8 });
+  }
+
+  // "GIẢI PHÁP ĐỀ XUẤT" label
+  s.addText("GIẢI PHÁP ĐỀ XUẤT", {
+    x: 0.5, y: 1.3, w: 5, h: 0.3, fontSize: 11, fontFace: F.b, color: T.textMuted, margin: 0,
+  });
+
+  // Main title
   s.addText(data.title || "GIẢI PHÁP", {
-    x: 0.8, y: 1.0, w: 8.4, h: 1.0, fontSize: 40, fontFace: F.h, color: T.text, bold: true, margin: 0,
+    x: 0.5, y: 1.6, w: 5.5, h: 1.2, fontSize: 32, fontFace: F.h, color: T.text, bold: true, margin: 0,
   });
-  s.addText(data.subtitle || "", {
-    x: 0.8, y: 2.1, w: 8.4, h: 0.7, fontSize: 22, fontFace: F.b, color: T.highlight, margin: 0,
+
+  // "cho Customer"
+  const customerDisplay = (data.customer || "").replace(/^cho\s+/i, "");
+  s.addText(`cho ${customerDisplay}`, {
+    x: 0.5, y: 2.85, w: 5, h: 0.5, fontSize: 18, fontFace: F.b, color: T.primary, bold: true, margin: 0,
   });
-  s.addText(data.customer || "", {
-    x: 0.8, y: 2.8, w: 8.4, h: 0.5, fontSize: 18, fontFace: F.b, color: T.textBody, margin: 0,
+
+  // Accent underline
+  s.addShape(pres.shapes.RECTANGLE, { x: 0.5, y: 3.4, w: 0.8, h: 0.04, fill: { color: T.highlight } });
+
+  // Company info at bottom-left
+  s.addText(`Thực hiện bởi: ${data.entity_label || ""}\nNgày: ${new Date().toLocaleDateString("vi-VN")}`, {
+    x: 0.5, y: SH - 0.8, w: 3, h: 0.55, fontSize: 9, fontFace: F.b, color: T.textMuted, margin: 0,
   });
-  // Bottom bar
-  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: SH - 0.5, w: SW, h: 0.5, fill: { color: T.accent } });
-  s.addText(data.entity_label || "", {
-    x: 0.8, y: SH - 0.45, w: 4, h: 0.35, fontSize: 10, fontFace: F.b, color: T.textBody, margin: 0,
+
+  // Right side: decorative accent block (representing app/solution)
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+    x: 6.2, y: 0.8, w: 3.5, h: 4.2, fill: { color: T.primaryDark }, rectRadius: 0.15,
   });
-  const dateStr = new Date().toLocaleDateString("vi-VN");
-  s.addText(dateStr, {
-    x: SW - 3, y: SH - 0.45, w: 2.2, h: 0.35, fontSize: 10, fontFace: F.b, color: T.textBody, align: "right", margin: 0,
+  // Phone mockup shape
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+    x: 7.0, y: 1.2, w: 1.8, h: 3.2, fill: { color: T.bgCard }, rectRadius: 0.15,
+    line: { color: T.isLightTheme ? "E0E0E0" : "333333", width: 1 },
+  });
+  // App header
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 7.0, y: 1.2, w: 1.8, h: 0.4, fill: { color: T.primary },
+  });
+  s.addText(`${customerDisplay} App`, {
+    x: 7.1, y: 1.22, w: 1.6, h: 0.36, fontSize: 8, fontFace: F.b, color: "FFFFFF", margin: 0,
+  });
+  // Call button
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+    x: 7.2, y: 3.5, w: 1.4, h: 0.35, fill: { color: T.primary }, rectRadius: 0.05,
+  });
+  s.addText("📞 GỌI TƯ VẤN", {
+    x: 7.2, y: 3.51, w: 1.4, h: 0.33, fontSize: 8, fontFace: F.h, color: "FFFFFF", align: "center", valign: "middle", margin: 0,
   });
 }
 
@@ -531,9 +577,10 @@ function slideTwoCol(pres, T, title, colData, num, total, label) {
       });
     }
 
-    const itemStartY = colTitle ? sy + 0.4 : sy;
-    const maxItems = Math.min(colItems.length, 5);
-    const itemH = Math.min(0.6, 3.2 / maxItems);
+    const itemStartY = colTitle ? sy + 0.45 : sy;
+    const maxItems = Math.min(colItems.length, 4);
+    const availH = SH - itemStartY - 0.5; // available height
+    const itemH = Math.min(0.85, availH / maxItems);
 
     colItems.slice(0, maxItems).forEach((item, ii) => {
       const iy = itemStartY + ii * itemH;
@@ -894,18 +941,55 @@ function slideSolutionColumns(pres, T, title, subtitle, solutions, num, total, l
 function slideClosing(pres, T, label) {
   const s = pres.addSlide();
   s.background = { color: T.bg };
-  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.highlight } });
+  s.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: SW, h: 0.06, fill: { color: T.primary } });
 
   s.addText("CẢM ƠN QUÝ KHÁCH", {
-    x: 1, y: 1.2, w: 8, h: 1.0,
-    fontSize: 36, fontFace: F.h, color: T.text, bold: true, align: "center",
+    x: 1, y: 0.8, w: 8, h: 0.8,
+    fontSize: 32, fontFace: F.h, color: T.text, bold: true, align: "center",
   });
-  s.addText([
-    { text: label || "ViHAT Group", options: { bold: true, breakLine: true, fontSize: 16 } },
-    { text: "Website: vihat.vn  |  Hotline: 1900 6181", options: { breakLine: true, fontSize: 13 } },
-    { text: "Email: info@vihat.vn", options: { fontSize: 13 } },
-  ], {
-    x: 1, y: 2.5, w: 8, h: 1.5, fontFace: F.b, color: T.textBody, align: "center",
+  s.addText("Chúng tôi sẵn sàng đồng hành cùng quý khách!", {
+    x: 1, y: 1.6, w: 8, h: 0.4,
+    fontSize: 14, fontFace: F.b, color: T.textMuted, italic: true, align: "center",
+  });
+
+  // Contact cards with icons
+  const contacts = [
+    { icon: "📞", label: "Hotline", value: "1900 6181" },
+    { icon: "📧", label: "Email", value: "info@vihat.vn" },
+    { icon: "🌐", label: "Website", value: "vihat.vn" },
+    { icon: "📍", label: "Địa chỉ", value: "140 Đường số 2, Vạn Phúc City, TP.HCM" },
+  ];
+  const cardW = 2.0, gap = 0.2, totalW = contacts.length * cardW + (contacts.length - 1) * gap;
+  const startX = (SW - totalW) / 2;
+
+  contacts.forEach((c, i) => {
+    const cx = startX + i * (cardW + gap);
+    // Card
+    s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+      x: cx, y: 2.3, w: cardW, h: 1.8, fill: { color: T.bgCard }, rectRadius: 0.08,
+      line: { color: T.isLightTheme ? "E0E0E0" : T.bgCard, width: 0.5 },
+    });
+    // Icon
+    s.addText(c.icon, {
+      x: cx, y: 2.5, w: cardW, h: 0.5,
+      fontSize: 24, align: "center", valign: "middle", margin: 0,
+    });
+    // Label
+    s.addText(c.label, {
+      x: cx + 0.1, y: 3.05, w: cardW - 0.2, h: 0.25,
+      fontSize: 9, fontFace: F.h, color: T.primary, bold: true, align: "center", margin: 0,
+    });
+    // Value
+    s.addText(c.value, {
+      x: cx + 0.1, y: 3.3, w: cardW - 0.2, h: 0.6,
+      fontSize: 8, fontFace: F.b, color: T.textBody, align: "center", margin: 0,
+    });
+  });
+
+  // Company name at bottom
+  s.addText(label || "ViHAT Group", {
+    x: 2, y: SH - 0.6, w: 6, h: 0.3,
+    fontSize: 12, fontFace: F.h, color: T.primary, align: "center", margin: 0,
   });
 }
 
@@ -964,6 +1048,8 @@ async function main() {
     subtitle: cover.subtitle || data.cover_subtitle || "",
     customer: cover.customer || data.customer_name || "",
     entity_label: entityLabel,
+    customer_logo: data.customer_logo || "",
+    vihat_logo: data.vihat_logo || "",
   });
 
   // Content

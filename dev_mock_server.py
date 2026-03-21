@@ -4536,6 +4536,34 @@ QUAN TRỌNG:
             raise Exception(f"Claude API error: {resp.status_code}")
 
 
+def _fetch_customer_logo(website: str) -> str:
+    """Try to fetch customer logo from their website. Returns local file path or empty."""
+    import urllib.request
+    if not website:
+        return ""
+    domain = website.replace("https://", "").replace("http://", "").strip("/")
+    logo_dir = Path(__file__).parent / "data" / "logos"
+    logo_dir.mkdir(parents=True, exist_ok=True)
+    logo_path = logo_dir / f"{domain.replace('.', '_')}.png"
+
+    if logo_path.exists() and logo_path.stat().st_size > 100:
+        return str(logo_path)
+
+    # Try Google favicon API (high-res)
+    try:
+        url = f"https://www.google.com/s2/favicons?domain={domain}&sz=128"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        resp = urllib.request.urlopen(req, timeout=10)
+        data = resp.read()
+        if len(data) > 100:
+            logo_path.write_bytes(data)
+            print(f"[Logo] Fetched logo for {domain}: {len(data)} bytes")
+            return str(logo_path)
+    except Exception as e:
+        print(f"[Logo] Failed to fetch for {domain}: {e}")
+    return ""
+
+
 def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
     """Create PPTX proposal using pptxgenjs for professional design."""
     import subprocess
@@ -4543,6 +4571,20 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
 
     entities = _get_legal_entities()
     entity_info = next((e for e in entities if e["id"] == legal_entity), entities[0] if entities else {"id": "default", "label": "Default", "template": ""})
+
+    # Fetch customer logo
+    customer_website = content.get("company_info", {}).get("website", "")
+    if not customer_website:
+        customer_website = content.get("customer_name", "").lower().replace(" ", "") + ".com"
+    customer_logo = _fetch_customer_logo(customer_website)
+
+    # Check for ViHAT logo
+    vihat_logo = ""
+    for logo_name in ["vihat_logo.png", "logo.png", "vihat.png"]:
+        p = Path(__file__).parent / "data" / "assets" / logo_name
+        if p.exists():
+            vihat_logo = str(p)
+            break
 
     # Build input JSON for pptxgenjs script
     pptx_data = {
@@ -4552,6 +4594,9 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
         "cover_title": content.get("cover_title", content.get("title", "GIẢI PHÁP")),
         "cover_subtitle": content.get("cover_subtitle", ""),
         "sections": content.get("sections", []),
+        "customer_logo": customer_logo,
+        "vihat_logo": vihat_logo,
+        "customer_website": customer_website,
     }
 
     # Write JSON to temp file
@@ -4751,6 +4796,8 @@ async def _run_proposal_generation(task_id: str):
         # Phase 1: Generate content with AI
         task["status"] = "generating_content"
         content = await _generate_proposal_content(task)
+        # Pass company_info for logo fetching
+        content["company_info"] = task.get("company_info", {})
 
         # Phase 2: Create document(s)
         task["status"] = "creating_document"
