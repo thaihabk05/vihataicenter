@@ -497,7 +497,7 @@ function EditDocumentDialog({
   products: Product[];
   solutions: SolutionItem[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updatedDoc: KnowledgeDocument) => void;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -553,8 +553,8 @@ function EditDocumentDialog({
         tags: allTags,
       });
       toast.success("Cập nhật thành công");
+      onSaved({ ...doc, title: title.trim(), description: description.trim(), tags: allTags });
       onClose();
-      onSaved();
     } catch (err: any) {
       toast.error(err?.response?.data?.detail || "Lỗi cập nhật");
     } finally {
@@ -1169,6 +1169,49 @@ export default function KnowledgePage() {
   // Edit dialog
   const [editDoc, setEditDoc] = useState<KnowledgeDocument | null>(null);
 
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filteredDocs.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredDocs.map((d) => d.id)));
+    }
+  };
+  const handleBulkTag = async () => {
+    if (bulkTags.length === 0) { toast.error("Chọn ít nhất 1 giải pháp"); return; }
+    setBulkSaving(true);
+    let updated = 0;
+    for (const docId of selectedIds) {
+      try {
+        const doc = docs.find((d) => d.id === docId);
+        if (!doc) continue;
+        const existingTags = new Set(doc.tags ?? []);
+        bulkTags.forEach((t) => existingTags.add(t));
+        const mergedTags = Array.from(existingTags);
+        await knowledgeApi.edit(docId, { tags: mergedTags });
+        setDocs((prev) => prev.map((d) => d.id === docId ? { ...d, tags: mergedTags } : d));
+        updated++;
+      } catch { /* skip errors */ }
+    }
+    toast.success(`Đã gán tags cho ${updated} tài liệu`);
+    setBulkSaving(false);
+    setBulkTagOpen(false);
+    setSelectedIds(new Set());
+    setBulkTags([]);
+  };
+
   // Re-index dialog
   const [reindexOpen, setReindexOpen] = useState(false);
 
@@ -1466,10 +1509,31 @@ export default function KnowledgePage() {
                   ))}
                 </div>
               ) : (
+                <>
+                {/* Bulk action bar */}
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-3 mb-3 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                    <span className="text-sm font-medium">{selectedIds.size} tài liệu đã chọn</span>
+                    <Button size="sm" variant="outline" onClick={() => setBulkTagOpen(true)}>
+                      <Package className="size-3.5 mr-1" /> Gán giải pháp
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                      Bỏ chọn
+                    </Button>
+                  </div>
+                )}
                 <div className="rounded-lg border">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-10">
+                          <input
+                            type="checkbox"
+                            checked={filteredDocs.length > 0 && selectedIds.size === filteredDocs.length}
+                            onChange={toggleSelectAll}
+                            className="rounded border-gray-300"
+                          />
+                        </TableHead>
                         <TableHead>Tài liệu</TableHead>
                         <TableHead>Nguồn</TableHead>
                         <TableHead>KB</TableHead>
@@ -1493,7 +1557,15 @@ export default function KnowledgePage() {
                         </TableRow>
                       ) : (
                         filteredDocs.map((doc: any) => (
-                          <TableRow key={doc.id}>
+                          <TableRow key={doc.id} className={selectedIds.has(doc.id) ? "bg-blue-50/50" : ""}>
+                            <TableCell className="w-10">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.has(doc.id)}
+                                onChange={() => toggleSelect(doc.id)}
+                                className="rounded border-gray-300"
+                              />
+                            </TableCell>
                             {/* Document title + description */}
                             <TableCell className="font-medium max-w-[260px]">
                               <div className="flex items-start gap-2">
@@ -1673,6 +1745,7 @@ export default function KnowledgePage() {
                     </TableBody>
                   </Table>
                 </div>
+                </>
               )}
             </TabsContent>
           </Tabs>
@@ -1833,7 +1906,9 @@ export default function KnowledgePage() {
         products={products}
         solutions={solutions}
         onClose={() => setEditDoc(null)}
-        onSaved={fetchDocs}
+        onSaved={(updatedDoc) => {
+          setDocs((prev) => prev.map((d) => d.id === updatedDoc.id ? updatedDoc : d));
+        }}
       />
 
       {/* Re-index by URL Dialog */}
@@ -1845,6 +1920,32 @@ export default function KnowledgePage() {
           fetchDocs();
         }}
       />
+
+      {/* Bulk Tag Dialog */}
+      <Dialog open={bulkTagOpen} onOpenChange={setBulkTagOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gán giải pháp hàng loạt</DialogTitle>
+            <DialogDescription>
+              Chọn giải pháp để gán cho {selectedIds.size} tài liệu đã chọn. Tags hiện có sẽ được giữ nguyên.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <ProductTagSelector
+              products={products}
+              solutions={solutions}
+              selected={bulkTags}
+              onChange={setBulkTags}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkTagOpen(false)}>Hủy</Button>
+            <Button onClick={handleBulkTag} disabled={bulkSaving}>
+              {bulkSaving ? "Đang gán..." : `Gán cho ${selectedIds.size} tài liệu`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
