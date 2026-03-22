@@ -330,11 +330,33 @@ class GoogleDriveSync:
 
         return merged if merged else [{"name": title, "text": markdown}]
 
+    @staticmethod
+    def _enrich_sections(sections: list, doc_meta: dict) -> list:
+        """Apply Contextual Retrieval headers to sections."""
+        enriched = []
+        for s in sections:
+            header_parts = []
+            if doc_meta.get("title"):
+                header_parts.append(f"Tài liệu: {doc_meta['title']}")
+            if doc_meta.get("description"):
+                header_parts.append(f"Tóm tắt: {doc_meta['description']}")
+            if doc_meta.get("tags"):
+                header_parts.append(f"Sản phẩm: {', '.join(doc_meta['tags'])}")
+            if doc_meta.get("file_type"):
+                header_parts.append(f"Loại: {doc_meta['file_type']}")
+            if header_parts:
+                ctx = "\n".join(header_parts)
+                enriched.append({"name": s["name"], "text": f"[CONTEXT]\n{ctx}\n[/CONTEXT]\n\n{s['text']}"})
+            else:
+                enriched.append(s)
+        return enriched
+
     async def sync_folder(
         self,
         folder_id: str,
         dataset_id: str,
         force: bool = False,
+        doc_meta: dict = None,
     ) -> dict:
         """Sync all files in a Google Drive folder to a Dify KB.
 
@@ -392,6 +414,10 @@ class GoogleDriveSync:
 
                     # Split into sections and upload
                     sections = await asyncio.to_thread(self._split_sections, markdown, file_name)
+                    # Apply Contextual Retrieval if doc_meta provided
+                    if doc_meta:
+                        file_meta = {**doc_meta, "title": file_name, "file_type": file_type}
+                        sections = self._enrich_sections(sections, file_meta)
                     new_doc_ids = []
 
                     for section in sections:

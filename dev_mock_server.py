@@ -1093,6 +1093,52 @@ def split_into_sections(markdown_text: str, doc_title: str, max_tokens: int = 15
     return merged if merged else [{"name": doc_title, "text": markdown_text}]
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CONTEXTUAL RETRIEVAL — Add context header to each chunk before Dify upload
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _add_context_header(section: dict, doc_meta: dict) -> dict:
+    """Add context header to section text before uploading to Dify.
+
+    This implements Anthropic's Contextual Retrieval pattern:
+    each chunk gets metadata about the source document so RAG
+    can find and use it more accurately.
+    """
+    header_parts = []
+
+    if doc_meta.get("title"):
+        header_parts.append(f"Tài liệu: {doc_meta['title']}")
+
+    if doc_meta.get("description"):
+        header_parts.append(f"Tóm tắt: {doc_meta['description']}")
+
+    if doc_meta.get("tags"):
+        tag_names = []
+        for tag in doc_meta["tags"]:
+            sol = next((s for s in SOLUTIONS.values() if s.get("slug") == tag and s.get("status") == "active"), None)
+            prod = next((p for p in PRODUCTS.values() if p.get("slug") == tag and p.get("status") == "active"), None)
+            name = sol["name"] if sol else (prod["name"] if prod else tag)
+            tag_names.append(name)
+        if tag_names:
+            header_parts.append(f"Sản phẩm/Giải pháp: {', '.join(tag_names)}")
+
+    if doc_meta.get("file_type"):
+        header_parts.append(f"Loại file: {doc_meta['file_type']}")
+
+    if not header_parts:
+        return section  # No context to add
+
+    context = "\n".join(header_parts)
+    new_text = f"[CONTEXT]\n{context}\n[/CONTEXT]\n\n{section['text']}"
+
+    return {"name": section["name"], "text": new_text}
+
+
+def _enrich_sections(sections: list[dict], doc_meta: dict) -> list[dict]:
+    """Apply context headers to all sections."""
+    return [_add_context_header(s, doc_meta) for s in sections]
+
+
 # File storage for original files (for download)
 UPLOAD_DIR = Path(__file__).parent / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -1379,7 +1425,10 @@ async def upload_knowledge(
         async with httpx.AsyncClient(timeout=300.0) as client:
             if preprocessed_text:
                 sections = split_into_sections(preprocessed_text, title or file_name)
-                print(f"[Upload] Split '{title}' into {len(sections)} sections")
+                # Apply Contextual Retrieval: add context header to each chunk
+                doc_meta = {"title": title or file_name, "description": description, "tags": parsed_tags, "file_type": ext.upper() if ext else ""}
+                sections = _enrich_sections(sections, doc_meta)
+                print(f"[Upload] Split '{title}' into {len(sections)} sections (with context)")
 
                 for i, section in enumerate(sections):
                     resp = await client.post(
@@ -1852,6 +1901,130 @@ Chỉ trả về JSON, không thêm text khác. Ví dụ: {"description": "...",
                 print(f"[AutoEnrich] Claude API error {resp.status_code}")
     except Exception as e:
         print(f"[AutoEnrich] Error for {file_name}: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RE-INDEX WITH CONTEXT — Re-upload sections to Dify with context headers
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def _reindex_with_context(parent_id: str):
+    """Re-upload a document's sections to Dify with context headers.
+
+    Called after auto-enrich adds description + tags to a document.
+    """
+    entry = FILE_REGISTRY.get(parent_id)
+    if not entry:
+        return
+
+    file_name = entry.get("file_name", "")
+    description = entry.get("description", "")
+    tags = entry.get("tags", [])
+
+    # Need description or tags for context to be useful
+    if not description and not tags:
+        return
+
+    # Read document content
+    content_text = ""
+    file_path = entry.get("file_path", "")
+    if file_path and Path(file_path).exists():
+        try:
+            ext = Path(file_path).suffix.lower()
+            if ext in (".txt", ".md", ".csv"):
+                content_text = Path(file_path).read_text(encoding="utf-8", errors="ignore")
+            elif ext in (".xlsx", ".xls"):
+                content_text = preprocess_excel(file_path)
+            elif ext == ".docx":
+                content_text = preprocess_docx(file_path)
+        except Exception as e:
+            print(f"[ReindexContext] Read error {file_name}: {e}")
+
+    if not content_text:
+        return  # Can't re-chunk without content
+
+    # Split into sections
+    title = entry.get("title", file_name)
+    sections = split_into_sections(content_text, title)
+
+    # Apply context headers
+    doc_meta = {
+        "title": title,
+        "description": description,
+        "tags": tags,
+        "file_type": entry.get("file_type", ""),
+    }
+    enriched = _enrich_sections(sections, doc_meta)
+
+    # Get dataset ID
+    knowledge_base = entry.get("knowledge_base", "sales")
+    ds_id = os.getenv(f"DIFY_DATASET_ID_{knowledge_base.upper()}", "")
+    if not ds_id:
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            # Delete old sections
+            old_ids = entry.get("section_doc_ids", [])
+            for old_id in old_ids:
+                try:
+                    await client.delete(
+                        f"{DIFY_BASE_URL}/datasets/{ds_id}/documents/{old_id}",
+                        headers={"Authorization": f"Bearer {DIFY_DATASET_API_KEY}"},
+                    )
+                except Exception:
+                    pass
+
+            # Upload enriched sections
+            new_ids = []
+            for section in enriched:
+                resp = await client.post(
+                    f"{DIFY_BASE_URL}/datasets/{ds_id}/document/create_by_text",
+                    headers={
+                        "Authorization": f"Bearer {DIFY_DATASET_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "name": section["name"],
+                        "text": section["text"],
+                        "indexing_technique": "high_quality",
+                        "process_rule": {"mode": "automatic"},
+                    },
+                )
+                if resp.status_code == 200:
+                    sec_id = resp.json().get("document", {}).get("id")
+                    if sec_id:
+                        new_ids.append(sec_id)
+
+            if new_ids:
+                entry["section_doc_ids"] = new_ids
+                entry["sections_count"] = len(new_ids)
+                save_registry()
+                print(f"[ReindexContext] {file_name}: re-indexed {len(new_ids)} sections with context")
+
+    except Exception as e:
+        print(f"[ReindexContext] Error {file_name}: {e}")
+
+
+@app.post("/api/v1/admin/knowledge/reindex-all-context")
+async def reindex_all_context():
+    """Re-index all documents with Contextual Retrieval headers."""
+    docs_to_reindex = [
+        pid for pid, entry in FILE_REGISTRY.items()
+        if entry.get("description") and entry.get("file_path") and Path(entry.get("file_path", "")).exists()
+    ]
+
+    async def _run_reindex():
+        for i, pid in enumerate(docs_to_reindex):
+            print(f"[ReindexAll] {i+1}/{len(docs_to_reindex)}: {FILE_REGISTRY[pid].get('file_name', '')}")
+            await _reindex_with_context(pid)
+
+    asyncio.create_task(_run_reindex())
+
+    return {
+        "status": "started",
+        "total_docs": len(docs_to_reindex),
+        "message": f"Đang re-index {len(docs_to_reindex)} tài liệu với Contextual Retrieval headers",
+    }
 
 
 # --- Knowledge Sources CRUD ---
@@ -2974,6 +3147,9 @@ async def _run_link_import(task_id: str, doc_id: str, dataset_id: str, knowledge
                 raise Exception("Failed to process Google Doc content")
 
             sections = await asyncio.to_thread(syncer._split_sections, markdown, doc_title)
+            # Apply Contextual Retrieval
+            doc_meta = {"title": doc_title, "tags": product_tags, "file_type": "GDOC"}
+            sections = _enrich_sections(sections, doc_meta)
             uploaded = 0
             uploaded_doc_ids = []
             async with httpx.AsyncClient(timeout=120.0) as client:
