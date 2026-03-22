@@ -1068,7 +1068,7 @@ async function main() {
   // Cover
   const cover = sections.find((s) => s.type === "cover") || {};
   slideCover(pres, T, {
-    title: cover.title || data.cover_title || "GIẢI PHÁP",
+    title: data.cover_title || cover.title || "GIẢI PHÁP",
     subtitle: cover.subtitle || data.cover_subtitle || "",
     customer: cover.customer || data.customer_name || "",
     entity_label: entityLabel,

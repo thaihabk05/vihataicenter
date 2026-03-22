@@ -4469,7 +4469,7 @@ QUAN TRỌNG: Phải ĐỌC KỸ brief và PHÂN TÍCH từng yêu cầu cụ th
 
 Trả về JSON với format:
 {{
-  "cover_title": "GIẢI PHÁP",
+  "cover_title": "Tên giải pháp ngắn gọn phù hợp, ví dụ: Tổng đài Đa kênh & In-App Calling",
   "cover_subtitle": "{solution_names_text}",
   "customer_name": "{task['customer_name']}",
   "sections": [
@@ -4654,6 +4654,21 @@ def _create_pptx_proposal(content: dict, output_path: Path, legal_entity: str):
         "customer_website": customer_website,
     }
 
+    # Fix generic cover title — construct from solution names if AI returned "GIẢI PHÁP"
+    ct = pptx_data["cover_title"].strip().upper()
+    if ct in ("GIẢI PHÁP", "GIẢI PHÁP ĐỀ XUẤT", ""):
+        solution_names = []
+        for slug in task.get("products", []):
+            sol = next((s for s in SOLUTIONS.values() if s.get("slug") == slug and s.get("status") == "active"), None)
+            if sol:
+                solution_names.append(sol["name"])
+            else:
+                prod = next((p for p in PRODUCTS.values() if p.get("slug") == slug and p.get("status") == "active"), None)
+                if prod:
+                    solution_names.append(prod["name"])
+        if solution_names:
+            pptx_data["cover_title"] = " & ".join(solution_names[:3])
+
     # Write JSON to temp file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(pptx_data, f, ensure_ascii=False)
@@ -4766,6 +4781,21 @@ def _create_pptx_template_based(content: dict, output_path: Path, legal_entity: 
             "b": template_fonts["b"],
         },
     }
+
+    # Fix generic cover title — construct from solution names
+    ct = pptx_data["cover_title"].strip().upper()
+    if ct in ("GIẢI PHÁP", "GIẢI PHÁP ĐỀ XUẤT", ""):
+        solution_names = []
+        for slug in task.get("products", []):
+            sol = next((s for s in SOLUTIONS.values() if s.get("slug") == slug and s.get("status") == "active"), None)
+            if sol:
+                solution_names.append(sol["name"])
+            else:
+                prod = next((p for p in PRODUCTS.values() if p.get("slug") == slug and p.get("status") == "active"), None)
+                if prod:
+                    solution_names.append(prod["name"])
+        if solution_names:
+            pptx_data["cover_title"] = " & ".join(solution_names[:3])
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
         json.dump(pptx_data, f, ensure_ascii=False)
