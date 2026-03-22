@@ -1924,7 +1924,7 @@ async def _reindex_with_context(parent_id: str):
     if not description and not tags:
         return
 
-    # Read document content
+    # Read document content — from local file or Google Drive
     content_text = ""
     file_path = entry.get("file_path", "")
     if file_path and Path(file_path).exists():
@@ -1939,7 +1939,43 @@ async def _reindex_with_context(parent_id: str):
         except Exception as e:
             print(f"[ReindexContext] Read error {file_name}: {e}")
 
+    # Fallback: fetch from Google Drive if no local content
+    drive_file_id = entry.get("drive_file_id", "")
+    source_type = entry.get("source_type", "")
+    if not content_text and drive_file_id and source_type in ("google_drive", "google_sheet", "google_doc"):
+        try:
+            from api.services.google_drive_sync import GoogleDriveSync
+            syncer = GoogleDriveSync(
+                credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+                dify_base_url=DIFY_BASE_URL,
+                dify_dataset_api_key=DIFY_DATASET_API_KEY,
+            )
+            if source_type == "google_sheet":
+                from api.services.google_sheets_sync import GoogleSheetsSync
+                ss = GoogleSheetsSync(
+                    credentials_path=str(Path(__file__).parent / "config" / "google-credentials.json"),
+                    dify_base_url=DIFY_BASE_URL,
+                    dify_dataset_api_key=DIFY_DATASET_API_KEY,
+                )
+                content_text = await asyncio.to_thread(ss.sheet_to_markdown, drive_file_id)
+            else:
+                # Download as Google Doc / file
+                mime_map = {
+                    "google_doc": "application/vnd.google-apps.document",
+                    "google_drive": None,  # Will auto-detect
+                }
+                mime = mime_map.get(source_type)
+                if mime:
+                    ext_str, raw = await asyncio.to_thread(syncer._download_file, drive_file_id, mime)
+                else:
+                    ext_str, raw = await asyncio.to_thread(syncer._download_file, drive_file_id, "application/pdf")
+                if raw:
+                    content_text = await asyncio.to_thread(syncer._preprocess_file, ext_str, raw, file_name)
+        except Exception as e:
+            print(f"[ReindexContext] Drive fetch error {file_name}: {e}")
+
     if not content_text:
+        print(f"[ReindexContext] Skip {file_name}: no content available")
         return  # Can't re-chunk without content
 
     # Split into sections
@@ -2007,23 +2043,35 @@ async def _reindex_with_context(parent_id: str):
 
 @app.post("/api/v1/admin/knowledge/reindex-all-context")
 async def reindex_all_context():
-    """Re-index all documents with Contextual Retrieval headers."""
+    """Re-index ALL documents (local + Drive) with Contextual Retrieval headers."""
     docs_to_reindex = [
         pid for pid, entry in FILE_REGISTRY.items()
-        if entry.get("description") and entry.get("file_path") and Path(entry.get("file_path", "")).exists()
+        if entry.get("section_doc_ids")  # Has sections on Dify
     ]
 
     async def _run_reindex():
+        success = 0
+        skipped = 0
+        errors = 0
         for i, pid in enumerate(docs_to_reindex):
-            print(f"[ReindexAll] {i+1}/{len(docs_to_reindex)}: {FILE_REGISTRY[pid].get('file_name', '')}")
-            await _reindex_with_context(pid)
+            fname = FILE_REGISTRY[pid].get("file_name", "")
+            print(f"[ReindexAll] {i+1}/{len(docs_to_reindex)}: {fname}")
+            try:
+                await _reindex_with_context(pid)
+                success += 1
+            except Exception as e:
+                errors += 1
+                print(f"[ReindexAll] Error {fname}: {e}")
+            # Small delay to avoid overwhelming Dify API
+            await asyncio.sleep(0.5)
+        print(f"[ReindexAll] Done: {success} success, {skipped} skipped, {errors} errors out of {len(docs_to_reindex)}")
 
     asyncio.create_task(_run_reindex())
 
     return {
         "status": "started",
         "total_docs": len(docs_to_reindex),
-        "message": f"Đang re-index {len(docs_to_reindex)} tài liệu với Contextual Retrieval headers",
+        "message": f"Đang re-index {len(docs_to_reindex)} tài liệu (local + Drive) với Contextual Retrieval headers",
     }
 
 
