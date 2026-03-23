@@ -2137,11 +2137,15 @@ async def resync_source(source_id: str, request: Request):
     source = DRIVE_SOURCES[source_id]
     folder_id = source.get("folder_id", "")
     if not folder_id:
-        raise HTTPException(400, "Source has no folder_id — only folder sources can be re-synced")
+        raise HTTPException(400, "Nguồn này không có folder_id — chỉ thư mục Drive mới đồng bộ lại được")
 
     knowledge_base = source.get("knowledge_base", "sales")
     product_tags = source.get("product_tags", [])
-    uploaded_by = _get_user_id(request)
+    try:
+        user = get_current_user(request)
+        uploaded_by = user.get("sub", "")
+    except Exception:
+        uploaded_by = source.get("uploaded_by", "")
 
     # Get existing file IDs already imported from this source
     existing_drive_ids = set()
@@ -2172,8 +2176,7 @@ async def resync_source(source_id: str, request: Request):
             if not Path(creds_path).exists():
                 raise Exception("File google-credentials.json không tồn tại")
 
-            dataset_map = _get_dataset_map()
-            dataset_id = dataset_map.get(knowledge_base, "")
+            dataset_id = DIFY_DATASET_IDS.get(knowledge_base, "")
 
             syncer = GoogleDriveSync(
                 credentials_path=creds_path,
