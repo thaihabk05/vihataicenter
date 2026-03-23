@@ -1036,11 +1036,11 @@ function SourcesPanel({
 
             return (
               <TableRow key={src.id}>
-                <TableCell className="font-medium max-w-[200px]">
+                <TableCell className="font-medium max-w-[350px]">
                   <div className="flex items-center gap-2">
                     {typeIcon}
                     <div className="min-w-0">
-                      <p className="truncate text-sm">{src.name}</p>
+                      <p className="truncate text-sm" title={src.name}>{src.name}</p>
                       <a
                         href={src.url}
                         target="_blank"
