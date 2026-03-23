@@ -2128,6 +2128,175 @@ async def delete_source(source_id: str):
     return {"status": "ok", "deleted_documents": deleted_count, "message": f"Đã xóa nguồn và {deleted_count} tài liệu khỏi hệ thống"}
 
 
+@app.post("/api/v1/admin/knowledge/sources/{source_id}/resync")
+async def resync_source(source_id: str, request: Request):
+    """Re-sync a Drive folder source — detect and import new files only."""
+    if source_id not in DRIVE_SOURCES:
+        raise HTTPException(404, "Source not found")
+
+    source = DRIVE_SOURCES[source_id]
+    folder_id = source.get("folder_id", "")
+    if not folder_id:
+        raise HTTPException(400, "Source has no folder_id — only folder sources can be re-synced")
+
+    knowledge_base = source.get("knowledge_base", "sales")
+    product_tags = source.get("product_tags", [])
+    uploaded_by = _get_user_id(request)
+
+    # Get existing file IDs already imported from this source
+    existing_drive_ids = set()
+    for doc_id in source.get("document_ids", []):
+        entry = FILE_REGISTRY.get(doc_id)
+        if entry and entry.get("drive_file_id"):
+            existing_drive_ids.add(entry["drive_file_id"])
+
+    # Create import task for tracking
+    task_id = str(uuid.uuid4())[:8]
+    IMPORT_TASKS[task_id] = {
+        "task_id": task_id,
+        "source_name": f"Re-sync: {source.get('name', source_id)}",
+        "source_type": "folder",
+        "knowledge_base": knowledge_base,
+        "status": "importing",
+        "started_at": datetime.now().isoformat(),
+        "detail": "Đang quét thư mục Drive...",
+    }
+
+    async def _run_resync():
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent / "api"))
+            from services.google_drive_sync import GoogleDriveSync
+
+            creds_path = str(Path(__file__).parent / "config" / "google-credentials.json")
+            if not Path(creds_path).exists():
+                raise Exception("File google-credentials.json không tồn tại")
+
+            dataset_map = _get_dataset_map()
+            dataset_id = dataset_map.get(knowledge_base, "")
+
+            syncer = GoogleDriveSync(
+                credentials_path=creds_path,
+                dify_base_url=os.environ.get("DIFY_BASE_URL", ""),
+                dify_dataset_api_key=os.environ.get("DIFY_DATASET_API_KEY", ""),
+            )
+
+            # List all files in folder
+            all_files = await asyncio.to_thread(syncer.list_files, folder_id)
+            new_files = [f for f in all_files if f["id"] not in existing_drive_ids]
+
+            if not new_files:
+                IMPORT_TASKS[task_id]["status"] = "completed"
+                IMPORT_TASKS[task_id]["detail"] = "Không có file mới trong thư mục"
+                return
+
+            IMPORT_TASKS[task_id]["detail"] = f"Tìm thấy {len(new_files)} file mới, đang import..."
+
+            # Import each new file
+            registered_count = 0
+            for file_info in new_files:
+                try:
+                    fid = file_info["id"]
+                    fname = file_info["name"]
+                    mime = file_info.get("mimeType", "")
+
+                    IMPORT_TASKS[task_id]["detail"] = f"Importing {fname}..."
+
+                    # Download and upload to Dify
+                    ext, content = await asyncio.to_thread(syncer._download_file, fid, mime)
+                    if not content:
+                        continue
+
+                    parent_id = f"drive-{fid[:20]}"
+
+                    # Preprocess for text extraction
+                    preprocessed = None
+                    if ext in (".xlsx", ".xls"):
+                        preprocessed = preprocess_excel(content, fname)
+                    elif ext in (".docx",):
+                        preprocessed = preprocess_docx(content, fname)
+
+                    # Upload to Dify
+                    doc_ids = []
+                    if preprocessed:
+                        sections = split_into_sections(preprocessed, fname)
+                        doc_meta = {"title": fname, "tags": product_tags, "file_type": ext.upper().strip(".")}
+                        for sec in sections:
+                            enriched = _add_context_header(sec, doc_meta)
+                            try:
+                                resp = syncer._create_document_by_text(dataset_id, enriched["name"], enriched["text"])
+                                if resp and resp.get("document", {}).get("id"):
+                                    doc_ids.append(resp["document"]["id"])
+                            except Exception:
+                                pass
+                    else:
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                            tmp.write(content)
+                            tmp_path = tmp.name
+                        try:
+                            resp = syncer._upload_file_to_dify(dataset_id, tmp_path, fname)
+                            if resp and resp.get("document", {}).get("id"):
+                                doc_ids.append(resp["document"]["id"])
+                        finally:
+                            Path(tmp_path).unlink(missing_ok=True)
+
+                    # Register in FILE_REGISTRY
+                    ext_map = {
+                        "application/vnd.google-apps.spreadsheet": "GSHEET",
+                        "application/vnd.google-apps.document": "GDOC",
+                        "application/pdf": "PDF",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "DOCX",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "XLSX",
+                        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "PPTX",
+                        "text/plain": "TXT",
+                    }
+                    file_type = ext_map.get(mime, ext.upper().strip(".") if ext else "FILE")
+
+                    FILE_REGISTRY[parent_id] = {
+                        "file_name": fname,
+                        "title": fname,
+                        "file_path": "",
+                        "knowledge_base": knowledge_base,
+                        "uploaded_at": datetime.now().isoformat(),
+                        "section_doc_ids": doc_ids,
+                        "source_type": "google_drive",
+                        "drive_url": f"https://drive.google.com/file/d/{fid}/view",
+                        "drive_file_id": fid,
+                        "file_type": file_type,
+                        "tags": product_tags,
+                        "source_id": source_id,
+                        "uploaded_by": uploaded_by,
+                        "description": "",
+                        "file_created_at": file_info.get("createdTime", ""),
+                        "file_modified_at": file_info.get("modifiedTime", ""),
+                    }
+
+                    if source_id in DRIVE_SOURCES:
+                        DRIVE_SOURCES[source_id]["document_ids"].append(parent_id)
+
+                    registered_count += 1
+
+                    # Auto-enrich in background
+                    asyncio.create_task(_auto_enrich_document(parent_id))
+
+                except Exception as e:
+                    print(f"[Resync] Error importing {file_info.get('name','')}: {e}")
+
+            if registered_count > 0:
+                save_registry()
+                save_sources()
+
+            IMPORT_TASKS[task_id]["status"] = "completed"
+            IMPORT_TASKS[task_id]["detail"] = f"Đã import {registered_count}/{len(new_files)} file mới"
+        except Exception as e:
+            IMPORT_TASKS[task_id]["status"] = "error"
+            IMPORT_TASKS[task_id]["detail"] = str(e)
+
+    asyncio.create_task(_run_resync())
+    return {"status": "started", "task_id": task_id, "message": f"Đang quét thư mục để tìm file mới..."}
+
+
 # --- Re-index by URL ---
 
 class ReindexByUrlRequest(BaseModel):

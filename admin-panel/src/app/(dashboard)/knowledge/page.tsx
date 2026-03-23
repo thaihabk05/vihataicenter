@@ -977,13 +977,16 @@ function SourcesPanel({
   products,
   onDelete,
   onRefresh,
+  onResync,
 }: {
   sources: DriveSource[];
   products: Product[];
   onDelete: (id: string) => void;
   onRefresh: () => void;
+  onResync: (id: string) => void;
 }) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
 
   if (sources.length === 0) {
     return (
@@ -1093,6 +1096,22 @@ function SourcesPanel({
                         <ExternalLink className="size-4 text-blue-500" />
                       </Button>
                     </a>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      title="Đồng bộ lại (tìm file mới trong thư mục)"
+                      disabled={syncingId === src.id}
+                      onClick={async () => {
+                        setSyncingId(src.id);
+                        try {
+                          onResync(src.id);
+                        } finally {
+                          setTimeout(() => setSyncingId(null), 3000);
+                        }
+                      }}
+                    >
+                      <RefreshCw className={`size-4 text-green-600 ${syncingId === src.id ? "animate-spin" : ""}`} />
+                    </Button>
                     {deleteConfirmId === src.id ? (
                       <>
                         <Button
@@ -1307,7 +1326,10 @@ export default function KnowledgePage() {
       const title = (d.title || "").toLowerCase();
       const fileName = (d.file_name || "").toLowerCase();
       const desc = (d.description || "").toLowerCase();
-      if (!title.includes(q) && !fileName.includes(q) && !desc.includes(q)) return false;
+      const driveUrl = (d.drive_url || "").toLowerCase();
+      const sourceType = (d.source_type || "").toLowerCase();
+      const sourceName = (d.source_name || "").toLowerCase();
+      if (!title.includes(q) && !fileName.includes(q) && !desc.includes(q) && !driveUrl.includes(q) && !sourceName.includes(q)) return false;
     }
     return true;
   });
@@ -1453,6 +1475,16 @@ export default function KnowledgePage() {
           products={products}
           onDelete={handleDeleteSource}
           onRefresh={fetchSources}
+          onResync={async (sourceId) => {
+            try {
+              await knowledgeApi.resyncSource(sourceId);
+              toast.success("Đang đồng bộ lại thư mục...");
+              startPolling();
+              fetchSources();
+            } catch {
+              toast.error("Lỗi đồng bộ lại");
+            }
+          }}
         />
       ) : (
         /* ─── Documents View ─── */

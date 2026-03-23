@@ -93,6 +93,7 @@ export const knowledgeApi = {
   // Sources
   listSources: () => apiClient.get('/admin/knowledge/sources'),
   deleteSource: (sourceId: string) => apiClient.delete(`/admin/knowledge/sources/${sourceId}`),
+  resyncSource: (sourceId: string) => apiClient.post(`/admin/knowledge/sources/${sourceId}/resync`),
   // Re-index by URL
   searchByUrl: (url: string) => apiClient.post('/admin/knowledge/search-by-url', { url }),
   reindexByUrl: (url: string) => apiClient.post('/admin/knowledge/reindex-by-url', { url }),
