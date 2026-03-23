@@ -1,16 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { MessageSquarePlus, RefreshCw, Trash2, MessageSquare } from "lucide-react";
+import { MessageSquarePlus, RefreshCw, Trash2, MessageSquare, Cpu, Cloud } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/chat/chat-input";
 import { ChatMessages } from "@/components/chat/chat-messages";
 import { useAuth } from "@/hooks/use-auth";
-import { queryApi, chatApi } from "@/lib/api-client";
+import { queryApi, chatApi, ragApi } from "@/lib/api-client";
 import type { ChatMessage, QueryResponse, Conversation } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+type ChatMode = "dify" | "local-rag";
 
 export default function ChatPage() {
   const { user } = useAuth();
@@ -19,6 +21,7 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>("dify");
 
   // Load conversation list
   const loadConversations = useCallback(async () => {
@@ -139,37 +142,63 @@ export default function ChatPage() {
       }
 
       try {
-        const payload: {
-          user_id: string;
-          query: string;
-          department?: string;
-          conversation_id?: string;
-          options?: { include_sources: boolean };
-        } = {
-          user_id: user.id,
-          query,
-          options: { include_sources: true },
-        };
+        let answerText: string;
+        let answerSources: any[] | undefined;
 
-        if (department) {
-          payload.department = department;
-        }
+        if (chatMode === "local-rag") {
+          // --- Local RAG mode ---
+          const res = await ragApi.chat(query, department);
+          const data = res.data as {
+            answer: string;
+            sources?: { title: string; score: number; drive_url?: string; knowledge_base?: string }[];
+            kg_results?: { entity: string; type: string }[];
+          };
+          answerText = data.answer;
+          // Map local RAG sources to the Source format used by chat-messages
+          answerSources = data.sources?.map((s) => ({
+            document: s.title,
+            chunk: s.drive_url ? s.drive_url : (s.knowledge_base || ""),
+            score: s.score,
+            drive_url: s.drive_url,
+            knowledge_base: s.knowledge_base,
+          }));
+        } else {
+          // --- Dify mode ---
+          const payload: {
+            user_id: string;
+            query: string;
+            department?: string;
+            conversation_id?: string;
+            options?: { include_sources: boolean };
+          } = {
+            user_id: user.id,
+            query,
+            options: { include_sources: true },
+          };
 
-        if (activeConvId) {
-          payload.conversation_id = activeConvId;
-        }
+          if (department) {
+            payload.department = department;
+          }
 
-        const res = await queryApi.send(payload);
-        const data: QueryResponse = res.data;
+          if (activeConvId) {
+            payload.conversation_id = activeConvId;
+          }
 
-        if (data.conversation_id) {
-          setConversationId(data.conversation_id);
+          const res = await queryApi.send(payload);
+          const data: QueryResponse = res.data;
+
+          if (data.conversation_id) {
+            setConversationId(data.conversation_id);
+          }
+
+          answerText = data.answer;
+          answerSources = data.sources;
         }
 
         const assistantMessage: ChatMessage = {
           role: "assistant",
-          content: data.answer,
-          sources: data.sources,
+          content: answerText,
+          sources: answerSources,
           timestamp: new Date(),
         };
 
@@ -179,8 +208,8 @@ export default function ChatPage() {
         try {
           await chatApi.saveMessage(activeConvId!, {
             role: "assistant",
-            content: data.answer,
-            sources: data.sources,
+            content: answerText,
+            sources: answerSources,
           });
           // Refresh conversation list to update title/count
           await loadConversations();
@@ -204,7 +233,7 @@ export default function ChatPage() {
         setLoading(false);
       }
     },
-    [user, conversationId, loadConversations]
+    [user, conversationId, loadConversations, chatMode]
   );
 
   const formatDate = (dateStr: string) => {
@@ -278,7 +307,7 @@ export default function ChatPage() {
                   </div>
                   <span className="pl-5.5 text-[11px] text-muted-foreground">
                     {formatDate(conv.created_at)}
-                    {conv.message_count > 0 && ` · ${conv.message_count} tin nhắn`}
+                    {conv.message_count > 0 && ` \u00b7 ${conv.message_count} tin nhắn`}
                   </span>
                 </button>
               ))}
@@ -297,15 +326,45 @@ export default function ChatPage() {
               Hỏi đáp với hệ thống tri thức ViHAT
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleNewConversation}
-            disabled={messages.length === 0}
-          >
-            <RefreshCw className="size-3.5" data-icon="inline-start" />
-            Cuộc hội thoại mới
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Chat mode toggle */}
+            <div className="flex items-center rounded-lg border border-border/60 bg-muted/30 p-0.5">
+              <button
+                onClick={() => setChatMode("dify")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  chatMode === "dify"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Cloud className="size-3.5" />
+                Dify
+              </button>
+              <button
+                onClick={() => setChatMode("local-rag")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                  chatMode === "local-rag"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Cpu className="size-3.5" />
+                Local RAG
+              </button>
+            </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNewConversation}
+              disabled={messages.length === 0}
+            >
+              <RefreshCw className="size-3.5" data-icon="inline-start" />
+              Cuộc hội thoại mới
+            </Button>
+          </div>
         </div>
 
         {/* Messages area */}

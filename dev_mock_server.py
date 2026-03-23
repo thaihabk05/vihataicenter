@@ -3048,6 +3048,169 @@ async def delete_conversation(conv_id: str):
     return {"status": "deleted"}
 
 
+# ═══ LOCAL RAG CHAT ═══
+
+@app.post("/api/v1/chat/local")
+async def chat_local(request: Request):
+    """Chat using local RAG engine (no Dify)."""
+    body = await request.json()
+    query = body.get("query", "")
+    knowledge_base = body.get("knowledge_base", "")
+    conversation_id = body.get("conversation_id", "")
+
+    if not query:
+        raise HTTPException(400, "Query is required")
+
+    from api.services.local_rag_engine import generate_answer
+    result = await asyncio.to_thread(
+        generate_answer, query, ANTHROPIC_API_KEY, knowledge_base
+    )
+    return result
+
+@app.get("/api/v1/rag/stats")
+async def rag_stats():
+    """Get RAG engine stats."""
+    from api.services.local_rag_engine import get_index_stats
+    return get_index_stats()
+
+@app.post("/api/v1/rag/index-all")
+async def rag_index_all(request: Request):
+    """Index all documents from FILE_REGISTRY into local RAG."""
+    asyncio.create_task(_run_rag_index_all())
+    return {"status": "started", "total_docs": len(FILE_REGISTRY)}
+
+async def _run_rag_index_all():
+    """Background task to index all docs."""
+    from api.services.local_rag_engine import (
+        index_document, extract_text_from_file, build_kg_from_products,
+        build_kg_from_text, initialize
+    )
+
+    initialize()
+
+    # Build KG from products/solutions
+    build_kg_from_products(PRODUCTS, SOLUTIONS)
+
+    total = len(FILE_REGISTRY)
+    success = 0
+    errors = 0
+
+    for i, (doc_id, entry) in enumerate(FILE_REGISTRY.items()):
+        try:
+            print(f"[RAG Index] {i+1}/{total}: {entry.get('file_name', doc_id)}")
+
+            # Extract text
+            text = ""
+            file_path = entry.get("file_path", "")
+            if file_path and Path(file_path).exists():
+                text = extract_text_from_file(file_path)
+
+            # If no local file, try to fetch from Drive
+            if not text and entry.get("drive_file_id"):
+                try:
+                    from api.services.google_drive_sync import GoogleDriveSync
+                    _creds = os.environ.get("GOOGLE_CREDENTIALS_PATH", "") or str(Path(__file__).parent / "config" / "google-credentials.json")
+                    syncer = GoogleDriveSync(
+                        credentials_path=_creds,
+                        dify_base_url=os.environ.get("DIFY_BASE_URL", ""),
+                        dify_dataset_api_key=os.environ.get("DIFY_DATASET_API_KEY", ""),
+                    )
+
+                    drive_file_id = entry.get("drive_file_id", "")
+                    source_type = entry.get("source_type", "")
+
+                    file_type = entry.get("file_type", "")
+                    if source_type == "google_sheet" or file_type == "GSHEET":
+                        text = syncer._sheet_to_markdown(drive_file_id, entry.get("title", ""))
+                    elif source_type == "google_doc" or file_type == "GDOC":
+                        # Export Google Doc as plain text
+                        ext, content = syncer._download_file(drive_file_id, "application/vnd.google-apps.document")
+                        if content:
+                            text = content.decode("utf-8", errors="ignore")
+                    else:
+                        # Download and extract
+                        mime_map = {
+                            "PDF": "application/pdf",
+                            "DOCX": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            "PPTX": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                            "XLSX": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            "GSLIDES": "application/vnd.google-apps.presentation",
+                        }
+                        mime = mime_map.get(file_type, "application/octet-stream")
+                        ext, content = syncer._download_file(drive_file_id, mime)
+                        if content:
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as f:
+                                f.write(content)
+                                tmp_path = f.name
+                            text = extract_text_from_file(tmp_path)
+                            os.unlink(tmp_path)
+                except Exception as e:
+                    print(f"[RAG Index] Drive fetch error for {entry.get('file_name', '')}: {e}")
+
+            if not text or len(text.strip()) < 20:
+                print(f"[RAG Index] Skip (no text): {entry.get('file_name', doc_id)}")
+                continue
+
+            # Build metadata
+            doc_meta = {
+                "title": entry.get("title", entry.get("file_name", "")),
+                "description": entry.get("description", ""),
+                "tags": entry.get("tags", []),
+                "knowledge_base": entry.get("knowledge_base", ""),
+                "drive_url": entry.get("drive_url", ""),
+                "file_type": entry.get("file_type", ""),
+            }
+
+            # Index document
+            num_chunks = await asyncio.to_thread(index_document, doc_id, text, doc_meta)
+
+            # Extract entities for KG (only for important docs, limit API calls)
+            if num_chunks > 0 and len(text) > 200:
+                try:
+                    await asyncio.to_thread(
+                        build_kg_from_text, text[:4000], doc_id, ANTHROPIC_API_KEY
+                    )
+                except Exception:
+                    pass  # KG extraction is optional
+
+            success += 1
+
+        except Exception as e:
+            print(f"[RAG Index] Error: {entry.get('file_name', doc_id)}: {e}")
+            errors += 1
+
+    print(f"[RAG Index] Done: {success} success, {errors} errors out of {total}")
+
+@app.post("/api/v1/rag/search")
+async def rag_search(request: Request):
+    """Search local RAG for testing."""
+    body = await request.json()
+    query = body.get("query", "")
+    top_k = body.get("top_k", 5)
+    kb = body.get("knowledge_base", "")
+
+    from api.services.local_rag_engine import search
+    results = await asyncio.to_thread(search, query, top_k, kb)
+    return {"results": results}
+
+@app.get("/api/v1/rag/kg")
+async def rag_kg_info():
+    """Get Knowledge Graph info."""
+    from api.services.local_rag_engine import _get_kg
+    G = _get_kg()
+    nodes_by_type = {}
+    for n in G.nodes:
+        t = G.nodes[n].get("type", "unknown")
+        nodes_by_type[t] = nodes_by_type.get(t, 0) + 1
+    return {
+        "total_nodes": len(G.nodes),
+        "total_edges": len(G.edges),
+        "nodes_by_type": nodes_by_type,
+        "sample_nodes": [{"id": n, **dict(G.nodes[n])} for n in list(G.nodes)[:20]],
+    }
+
+
 # ---- Feedback ----
 
 FEEDBACK_FILE = Path(__file__).parent / "data" / "feedback.json"

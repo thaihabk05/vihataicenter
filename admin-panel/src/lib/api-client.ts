@@ -170,6 +170,15 @@ export const salesScriptApi = {
   delete: (id: string) => apiClient.delete(`/sales-scripts/${id}`),
 };
 
+// Local RAG
+export const ragApi = {
+  chat: (query: string, kb?: string) => apiClient.post('/chat/local', { query, knowledge_base: kb || '' }),
+  stats: () => apiClient.get('/rag/stats'),
+  indexAll: () => apiClient.post('/rag/index-all'),
+  search: (query: string, topK?: number) => apiClient.post('/rag/search', { query, top_k: topK || 5 }),
+  kgInfo: () => apiClient.get('/rag/kg'),
+};
+
 // Proposals
 export const proposalApi = {
   // Legacy products config (backward compat)
