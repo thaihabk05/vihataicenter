@@ -1125,6 +1125,12 @@ def _add_context_header(section: dict, doc_meta: dict) -> dict:
     if doc_meta.get("file_type"):
         header_parts.append(f"Loại file: {doc_meta['file_type']}")
 
+    # Add document URL so chatbot can provide real links
+    if doc_meta.get("drive_url"):
+        header_parts.append(f"Link tài liệu: {doc_meta['drive_url']}")
+    elif doc_meta.get("download_url"):
+        header_parts.append(f"Link tải: {doc_meta['download_url']}")
+
     if not header_parts:
         return section  # No context to add
 
@@ -1988,6 +1994,8 @@ async def _reindex_with_context(parent_id: str):
         "description": description,
         "tags": tags,
         "file_type": entry.get("file_type", ""),
+        "drive_url": entry.get("drive_url", ""),
+        "download_url": f"http://localhost:8000/api/v1/files/{parent_id}/download" if entry.get("file_path") else "",
     }
     enriched = _enrich_sections(sections, doc_meta)
 
@@ -3196,7 +3204,7 @@ async def _run_link_import(task_id: str, doc_id: str, dataset_id: str, knowledge
 
             sections = await asyncio.to_thread(syncer._split_sections, markdown, doc_title)
             # Apply Contextual Retrieval
-            doc_meta = {"title": doc_title, "tags": product_tags, "file_type": "GDOC"}
+            doc_meta = {"title": doc_title, "tags": product_tags, "file_type": "GDOC", "drive_url": f"https://docs.google.com/document/d/{file_id}"}
             sections = _enrich_sections(sections, doc_meta)
             uploaded = 0
             uploaded_doc_ids = []
